@@ -1,5 +1,4 @@
 
-
 /* ================================================
    TRANSLATIONS — نظام الترجمة
 ================================================ */
@@ -399,78 +398,22 @@ function previewLangChange(lang) {
 }
 
 /* ================================================
-   DATABASE — قاعدة البيانات مع ضمان سلامة البيانات
+   DATABASE
 ================================================ */
-
-/* المستخدم الافتراضي المضمون دائماً */
-const DEFAULT_ADMIN = { name: "Admin", pin: "1234", role: "manager", immutable: true };
-
-/* القيم الافتراضية الكاملة للإعدادات */
-const DEFAULT_SETTINGS = {
-  name:"POS DZ", phone:"", addr:"", welcome:"",
-  currency:"دج", lang:"ar",
-  dateFormat:"DD-MM-YYYY", timeFormat:"24", logo:"",
-  printer:"default", paperSize:"80mm", copies:1,
-  printLogo:false, printShopName:true, printPhone:true,
-  printWelcome:true, printBarcode:false, printCustBarcode:false,
-  invoiceNum:1, autoBackup:false, lastBackup:"",
-  soundAdd:false, soundPay:false, barcodeReader:false,
-  fontFamily:"Cairo", fontSize:15, appTheme:"default"
+let DB = JSON.parse(localStorage.getItem("POSDZ")) || {
+  users:    [{ name: "Admin", pin: "1234", role: "manager", immutable: true }],
+  settings: {
+    name:"POS DZ", phone:"", addr:"", welcome:"",
+    currency:"دج", lang:"ar",
+    dateFormat:"DD-MM-YYYY", timeFormat:"24", logo:"",
+    printer:"default", paperSize:"80mm", copies:1,
+    printLogo:false, printShopName:true, printPhone:true,
+    printWelcome:true, printBarcode:false, printCustBarcode:false,
+    invoiceNum:1, autoBackup:false, lastBackup:""
+  },
+  families:[], brands:[], stock:[], cart:[],
+  customers:[], debts:[], sales:[]
 };
-
-/* تحميل قاعدة البيانات مع ضمان سلامتها */
-function loadDB() {
-  let raw = null;
-  try { raw = JSON.parse(localStorage.getItem("POSDZ")); } catch(e) { raw = null; }
-
-  /* إذا لم تكن هناك بيانات — قاعدة بيانات جديدة نظيفة */
-  if (!raw || typeof raw !== "object") {
-    return {
-      users:    [{ ...DEFAULT_ADMIN }],
-      settings: { ...DEFAULT_SETTINGS },
-      families:[], brands:[], stock:[], cart:[],
-      customers:[], debts:[], sales:[]
-    };
-  }
-
-  /* ضمان وجود مصفوفة المستخدمين */
-  if (!Array.isArray(raw.users)) raw.users = [];
-
-  /* ضمان وجود Admin دائماً — لا يمكن حذفه أو فقدانه */
-  const hasAdmin = raw.users.some(u => u.immutable === true);
-  if (!hasAdmin) {
-    raw.users.unshift({ ...DEFAULT_ADMIN });
-  } else {
-    /* التأكد من أن Admin يملك الصلاحيات الصحيحة */
-    const adminIdx = raw.users.findIndex(u => u.immutable === true);
-    if (adminIdx !== -1) {
-      raw.users[adminIdx] = {
-        ...raw.users[adminIdx],
-        role: "manager",
-        immutable: true
-      };
-    }
-  }
-
-  /* ضمان سلامة الإعدادات — دمج القيم الناقصة مع الافتراضية */
-  raw.settings = Object.assign({}, DEFAULT_SETTINGS, raw.settings || {});
-
-  /* ضمان وجود المصفوفات الأساسية */
-  raw.families  = Array.isArray(raw.families)  ? raw.families  : [];
-  raw.brands    = Array.isArray(raw.brands)    ? raw.brands    : [];
-  raw.stock     = Array.isArray(raw.stock)     ? raw.stock     : [];
-  raw.cart      = Array.isArray(raw.cart)      ? raw.cart      : [];
-  raw.customers = Array.isArray(raw.customers) ? raw.customers : [];
-  raw.debts     = Array.isArray(raw.debts)     ? raw.debts     : [];
-  raw.sales     = Array.isArray(raw.sales)     ? raw.sales     : [];
-
-  return raw;
-}
-
-let DB = loadDB();
-
-/* حفظ فوري بعد التحميل لضمان البيانات المُصلحة */
-(function(){ try { localStorage.setItem("POSDZ", JSON.stringify(DB)); } catch(e){} })();
 
 /* ================================================
    DOM ELEMENTS
@@ -503,15 +446,7 @@ const totalEl        = document.getElementById("total");
 /* ================================================
    UTILITY
 ================================================ */
-function saveDB() {
-  /* ضمان Admin قبل كل عملية حفظ */
-  if (!Array.isArray(DB.users)) DB.users = [];
-  const hasAdmin = DB.users.some(u => u.immutable === true);
-  if (!hasAdmin) DB.users.unshift({ ...DEFAULT_ADMIN });
-  try { localStorage.setItem("POSDZ", JSON.stringify(DB)); } catch(e) {
-    console.warn("POSDZ: تعذّر الحفظ في localStorage", e);
-  }
-}
+function saveDB() { localStorage.setItem("POSDZ", JSON.stringify(DB)); }
 function getCurrency() { return DB.settings.currency || "دج"; }
 function formatPrice(val) { return Number(val).toFixed(2) + " " + getCurrency(); }
 
@@ -576,256 +511,11 @@ window.alert = function(msg) {
   showToast(msg, type);
 };
 
-/* window.confirm — الإبقاء على النسخة الأصلية بدون تعديل */
-
-/* ================================================
-   SAFE CONFIRM — نافذة تأكيد مخصصة موثوقة
-================================================ */
-function safeConfirm(msg, onYes) {
-  // إنشاء المودال إذا لم يكن موجوداً
-  let overlay = document.getElementById("safeConfirmOverlay");
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.id = "safeConfirmOverlay";
-    overlay.style.cssText = `
-      position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;
-      display:flex;align-items:center;justify-content:center;
-      backdrop-filter:blur(4px);animation:fadeIn .15s ease;
-    `;
-    overlay.innerHTML = `
-      <div style="background:var(--surface,#fff);border-radius:16px;padding:28px 28px 22px;max-width:360px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.25);border:1px solid var(--border,#e2e5f0);text-align:center">
-        <div style="font-size:28px;margin-bottom:12px">⚠️</div>
-        <div id="safeConfirmMsg" style="font-size:15px;font-weight:600;color:var(--text,#0f172a);line-height:1.6;margin-bottom:22px"></div>
-        <div style="display:flex;gap:10px;justify-content:center">
-          <button id="safeConfirmNo"  style="flex:1;padding:11px;background:var(--bg2,#e8eaf2);color:var(--text,#0f172a);border-radius:10px;font-weight:700;font-size:14px;border:none;cursor:pointer">إلغاء</button>
-          <button id="safeConfirmYes" style="flex:1;padding:11px;background:linear-gradient(135deg,#ef4444,#dc2626);color:white;border-radius:10px;font-weight:700;font-size:14px;border:none;cursor:pointer">تأكيد الحذف</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-  }
-  document.getElementById("safeConfirmMsg").textContent = msg;
-  overlay.style.display = "flex";
-  const close = () => { overlay.style.display = "none"; };
-  document.getElementById("safeConfirmNo").onclick  = close;
-  document.getElementById("safeConfirmYes").onclick = () => { close(); onYes(); };
-  overlay.onclick = (e) => { if (e.target === overlay) close(); };
-}
-
-/* نافذة إدخال مخصصة — بديل window.prompt */
-function safePrompt(msg, onConfirm, defaultVal="") {
-  let overlay = document.getElementById("safePromptOverlay");
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.id = "safePromptOverlay";
-    overlay.style.cssText = `
-      position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;
-      display:flex;align-items:center;justify-content:center;
-      backdrop-filter:blur(4px);
-    `;
-    overlay.innerHTML = `
-      <div style="background:var(--surface,#fff);border-radius:16px;padding:28px 28px 22px;max-width:360px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.25);border:1px solid var(--border,#e2e5f0)">
-        <div id="safePromptMsg" style="font-size:15px;font-weight:600;color:var(--text,#0f172a);margin-bottom:14px;line-height:1.6"></div>
-        <input id="safePromptInput" type="number" min="0" step="0.01"
-          style="width:100%;padding:12px 14px;border-radius:10px;border:1.5px solid var(--border,#e2e5f0);font-size:15px;font-family:inherit;margin-bottom:16px;outline:none;box-sizing:border-box">
-        <div style="display:flex;gap:10px">
-          <button id="safePromptNo"  style="flex:1;padding:11px;background:var(--bg2,#e8eaf2);color:var(--text,#0f172a);border-radius:10px;font-weight:700;font-size:14px;border:none;cursor:pointer">إلغاء</button>
-          <button id="safePromptYes" style="flex:1;padding:11px;background:linear-gradient(135deg,#10b981,#059669);color:white;border-radius:10px;font-weight:700;font-size:14px;border:none;cursor:pointer">تأكيد</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-  }
-  document.getElementById("safePromptMsg").textContent = msg;
-  const inp = document.getElementById("safePromptInput");
-  inp.value = defaultVal;
-  overlay.style.display = "flex";
-  setTimeout(()=>inp.focus(), 100);
-  const close = () => { overlay.style.display = "none"; inp.value = ""; };
-  document.getElementById("safePromptNo").onclick  = close;
-  document.getElementById("safePromptYes").onclick = () => { const v=inp.value; close(); onConfirm(v); };
-  inp.onkeydown = (e) => { if(e.key==="Enter"){ const v=inp.value; close(); onConfirm(v); } };
-  overlay.onclick = (e) => { if(e.target===overlay) close(); };
-}
-
-/* نافذة إدخال نصي مخصصة */
-function safeTextPrompt(label, defaultVal, onConfirm) {
-  let overlay = document.getElementById("safeTextPromptOverlay");
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.id = "safeTextPromptOverlay";
-    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)";
-    overlay.innerHTML = `
-      <div style="background:var(--surface,#fff);border-radius:16px;padding:28px 28px 22px;max-width:360px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.25);border:1px solid var(--border,#e2e5f0)">
-        <div id="safeTextLabel" style="font-size:15px;font-weight:700;color:var(--text,#0f172a);margin-bottom:12px"></div>
-        <input id="safeTextInput" type="text"
-          style="width:100%;padding:12px 14px;border-radius:10px;border:1.5px solid var(--border,#e2e5f0);font-size:15px;font-family:inherit;margin-bottom:16px;outline:none;box-sizing:border-box">
-        <div style="display:flex;gap:10px">
-          <button id="safeTextNo"  style="flex:1;padding:11px;background:var(--bg2,#e8eaf2);color:var(--text,#0f172a);border-radius:10px;font-weight:700;font-size:14px;border:none;cursor:pointer">إلغاء</button>
-          <button id="safeTextYes" style="flex:1;padding:11px;background:linear-gradient(135deg,#6366f1,#a855f7);color:white;border-radius:10px;font-weight:700;font-size:14px;border:none;cursor:pointer">✅ حفظ</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-  }
-  document.getElementById("safeTextLabel").textContent = label;
-  const inp = document.getElementById("safeTextInput");
-  inp.value = defaultVal || "";
-  overlay.style.display = "flex";
-  setTimeout(()=>{ inp.focus(); inp.select(); }, 100);
-  const close = () => { overlay.style.display = "none"; };
-  document.getElementById("safeTextNo").onclick  = close;
-  document.getElementById("safeTextYes").onclick = () => { const v=inp.value; close(); onConfirm(v); };
-  inp.onkeydown = (e) => { if(e.key==="Enter"){ const v=inp.value; close(); onConfirm(v); } };
-  overlay.onclick = (e) => { if(e.target===overlay) close(); };
-}
-/* ================================================ */
-function playSound(type) {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    if (type === 'add') {
-      osc.frequency.setValueAtTime(880, ctx.currentTime);
-      osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.08);
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.2);
-    } else if (type === 'pay') {
-      osc.frequency.setValueAtTime(523, ctx.currentTime);
-      osc.frequency.setValueAtTime(659, ctx.currentTime + 0.1);
-      osc.frequency.setValueAtTime(784, ctx.currentTime + 0.2);
-      gain.gain.setValueAtTime(0.35, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.4);
-    }
-  } catch(e) {}
-}
-
-function triggerSound(type) {
-  const s = DB.settings;
-  if (type === 'add' && s.soundAdd) playSound('add');
-  if (type === 'pay' && s.soundPay) playSound('pay');
-}
-
-function testSound(type) { playSound(type); }
-
-function saveSoundSettings() {
-  DB.settings.soundAdd       = document.getElementById("sSoundAdd")?.checked || false;
-  DB.settings.soundPay       = document.getElementById("sSoundPay")?.checked || false;
-  DB.settings.barcodeReader  = document.getElementById("sBarcodeReader")?.checked || false;
-  saveDB();
-  showToast("✅ تم حفظ الإعدادات", "success");
-}
-
-/* ================================================
-   BARCODE READER — قارئ الباركود
-================================================ */
-let barcodeBuffer = "";
-let barcodeTimer  = null;
-
-document.addEventListener("keydown", function(e) {
-  if (!DB.settings.barcodeReader) return;
-  const activePage = document.querySelector(".page.active");
-  if (!activePage || activePage.id !== "sale") return;
-  const focused = document.activeElement;
-  const isInput = focused && (focused.tagName === "INPUT" || focused.tagName === "SELECT" || focused.tagName === "TEXTAREA");
-  if (isInput && focused.id !== "search") return;
-  if (e.key === "Enter" && barcodeBuffer.length > 2) {
-    const bc = barcodeBuffer.trim();
-    barcodeBuffer = "";
-    clearTimeout(barcodeTimer);
-    const item = DB.stock.find(i => i.barcode === bc);
-    if (item) {
-      document.getElementById("search").value = bc;
-      addItemByBarcode(bc);
-    }
-    return;
-  }
-  if (e.key.length === 1) {
-    barcodeBuffer += e.key;
-    clearTimeout(barcodeTimer);
-    barcodeTimer = setTimeout(() => { barcodeBuffer = ""; }, 300);
-  }
-});
-
-function addItemByBarcode(bc) {
-  const item = DB.stock.find(i => i.barcode === bc);
-  if (!item) { showToast(t("msg_not_found"), "error"); return; }
-  if (item.qty <= 0) { showToast(t("msg_out_of_stock"), "error"); return; }
-  const cartItem = DB.cart.find(c => c.barcode === item.barcode);
-  if (cartItem) {
-    if (cartItem.qty >= item.qty) { showToast(t("msg_not_enough"), "error"); return; }
-    cartItem.qty += 1;
-  } else {
-    DB.cart.push({ name:`${item.type} ${item.brand}`, barcode:item.barcode, price:item.price, costPrice:item.costPrice, qty:1 });
-  }
-  triggerSound('add');
-  document.getElementById("search").value = "";
-  document.getElementById("searchSuggestions")?.classList.add("hidden");
-  saveDB(); renderSaleStock();
-}
-
-/* ================================================
-   PRINTER SEARCH — البحث عن طابعة
-================================================ */
-async function searchForPrinters() {
-  const statusEl = document.getElementById("printerSearchStatus");
-  const select   = document.getElementById("sPrinter");
-  if (statusEl) statusEl.innerHTML = "⏳ جارٍ البحث عن الطابعات...";
-
-  try {
-    /* ===== محاولة 1: Web Serial API (Chrome 89+) ===== */
-    if (navigator.serial) {
-      const ports = await navigator.serial.getPorts().catch(()=>[]);
-      if (ports.length > 0) {
-        select.innerHTML = "";
-        ports.forEach((p, i) => {
-          const o = document.createElement("option");
-          o.value = "serial_" + i;
-          const info = p.getInfo ? p.getInfo() : {};
-          o.textContent = info.usbVendorId
-            ? "طابعة USB — VID:" + info.usbVendorId.toString(16).toUpperCase()
-            : "منفذ تسلسلي #" + (i+1);
-          select.appendChild(o);
-        });
-        /* خيار الطابعة الافتراضية دائماً */
-        const def = document.createElement("option");
-        def.value = "default"; def.textContent = "الطابعة الافتراضية للنظام";
-        select.insertBefore(def, select.firstChild);
-        select.value = DB.settings.printer || "default";
-        if (statusEl) statusEl.innerHTML = "✅ تم الكشف عن <strong>" + ports.length + "</strong> طابعة عبر USB.";
-        showToast("✅ تم الكشف عن الطابعات", "success");
-        return;
-      }
-    }
-
-    /* ===== محاولة 2: window.print() مع تحديد الطابعة عبر CSS ===== */
-    /* المتصفح سيفتح نافذة اختيار الطابعة تلقائياً */
-    select.innerHTML = "";
-    const printersList = [
-      { value: "default",  label: "🖨️ الطابعة الافتراضية للنظام" },
-      { value: "thermal",  label: "🔥 طابعة حرارية 80mm (XP-80C, POS-80)" },
-      { value: "thermal58",label: "🔥 طابعة حرارية 58mm" },
-      { value: "inkjet",   label: "💧 طابعة عادية (Inkjet/Laser)" },
-    ];
-    printersList.forEach(p => {
-      const o = document.createElement("option");
-      o.value = p.value; o.textContent = p.label;
-      select.appendChild(o);
-    });
-    select.value = DB.settings.printer || "default";
-
-    if (statusEl) statusEl.innerHTML =
-      "ℹ️ <strong>ملاحظة:</strong> المتصفح سيفتح قائمة الطابعات تلقائياً عند الطباعة.<br>" +
-      "لتعيين الطابعة الافتراضية مباشرة: افتح <strong>إعدادات Windows ← الطابعات</strong> وضع طابعتك الحرارية كافتراضية.";
-    showToast("✅ اختر نوع طابعتك من القائمة", "info");
-
-  } catch(e) {
-    if (statusEl) statusEl.textContent = "⚠️ تعذّر الكشف. اختر نوع الطابعة يدوياً من القائمة.";
-  }
-}
+window.confirm = function(msg) {
+  return window._nativeConfirm ? window._nativeConfirm(msg) : window.__confirm(msg);
+};
+window.__confirm = window.confirm.bind(window);
+const _origConfirm = Function.prototype.call.bind(window.__proto__.__proto__.constructor.prototype.confirm || window.__proto__.confirm) ;
 
 /* ================================================
    LOGIN
@@ -918,7 +608,7 @@ function show(id){
   if (id==="reports")   renderReports();
   if (id==="settings")  loadSettings();
   if (id==="alerts")    renderAlerts();
-  if (id==="customers") { renderCustomerList(); renderDebts(); }
+  if (id==="customers") renderCustomerList();
   if (id==="stock")     { renderFamilyList(); renderBrandList(); renderStock(); populateStockSelects(); }
 }
 
@@ -979,13 +669,6 @@ function loadSettings() {
   document.getElementById("sPrintCustBarcode").checked=!!s.printCustBarcode;
   document.getElementById("sAutoBackup").checked    = !!s.autoBackup;
   updateBackupStatus();
-  // إعدادات الصوت والباركود
-  const sSoundAdd = document.getElementById("sSoundAdd");
-  const sSoundPay = document.getElementById("sSoundPay");
-  const sBarcodeReader = document.getElementById("sBarcodeReader");
-  if (sSoundAdd) sSoundAdd.checked = !!s.soundAdd;
-  if (sSoundPay) sSoundPay.checked = !!s.soundPay;
-  if (sBarcodeReader) sBarcodeReader.checked = !!s.barcodeReader;
   const ff=document.getElementById("sFontFamily");
   if(ff&&s.fontFamily) ff.value=s.fontFamily;
   document.querySelectorAll(".fsz-btn").forEach(b=>{
@@ -1236,31 +919,19 @@ function checkAutoBackup() {
   const last=DB.settings.lastBackup;
   if (!last||!isSameDay(new Date(last),new Date())) manualBackup();
 }
-function confirmPartialReset() {
-  safeConfirm("هل تريد مسح المبيعات والديون وسجل العمليات فقط؟\nأسماء المنتجات والماركات والعائلات ستبقى.", function(){
-    DB.sales = [];
-    DB.debts  = [];
-    DB.customers.forEach(c => { c.debts = []; });
-    saveDB();
-    showToast("✅ تم المسح الجزئي — أسماء المنتجات والماركات محفوظة.", "success");
-    renderReports();
-  });
-}
-
 function confirmReset() {
-  safeConfirm("⚠️ تحذير: سيتم حذف جميع البيانات وإعادة البرنامج لحالته الأصلية. هذا الإجراء لا يمكن التراجع عنه.", function(){
-    const freshDB = {
-      users:    [{ ...DEFAULT_ADMIN }],
-      settings: { ...DEFAULT_SETTINGS, lang: DB.settings.lang || "ar" },
-      families:[], brands:[], stock:[], cart:[],
-      customers:[], debts:[], sales:[]
-    };
-    DB = freshDB;
-    saveDB();
-    localStorage.removeItem("POSDZ_LOGGED");
-    showToast(t("msg_reset_done"), "success");
-    setTimeout(()=>location.reload(), 1500);
-  });
+  const confirmWord=DB.settings.lang==="fr"?"oui":DB.settings.lang==="en"?"yes":"نعم";
+  const ans=window.prompt(t("msg_reset_confirm"));
+  if (!ans||ans.trim().toLowerCase()!==confirmWord) { showToast(t("msg_reset_cancel"),"info"); return; }
+  const freshDB={
+    users:[{name:"Admin",pin:"1234",role:"manager",immutable:true}],
+    settings:{name:"POS DZ",phone:"",addr:"",welcome:"",currency:"دج",lang:DB.settings.lang||"ar",dateFormat:"DD-MM-YYYY",timeFormat:"24",logo:"",printer:"default",paperSize:"80mm",copies:1,printLogo:false,printShopName:true,printPhone:true,printWelcome:true,printBarcode:false,printCustBarcode:false,invoiceNum:1,autoBackup:false,lastBackup:""},
+    families:[],brands:[],stock:[],cart:[],customers:[],debts:[],sales:[]
+  };
+  DB=freshDB; saveDB();
+  localStorage.removeItem("POSDZ_LOGGED");
+  showToast(t("msg_reset_done"),"success");
+  setTimeout(()=>location.reload(),1500);
 }
 
 /* ================================================
@@ -1317,23 +988,19 @@ function addFamily(){
 }
 function editFamily(id){
   const fam=DB.families.find(f=>f.id===id); if(!fam) return;
-  safeTextPrompt(t("edit_btn")+" — "+fam.name, fam.name, function(newName){
-    if (!newName||newName.trim()===fam.name) return;
-    if (DB.families.find(f=>f.name.toLowerCase()===newName.trim().toLowerCase()&&f.id!==id)){
-      showToast(t("msg_family_exists"),"error"); return;
-    }
-    fam.name=newName.trim(); saveDB();
-    renderFamilyList(); populateStockSelects(); populateBrandFamilySelect();
-    showToast("✅ تم تعديل العائلة","success");
-  });
+  const newName=window.prompt(t("edit_btn")+" — "+fam.name+":", fam.name);
+  if (!newName||newName.trim()===fam.name) return;
+  if (DB.families.find(f=>f.name.toLowerCase()===newName.trim().toLowerCase()&&f.id!==id)){
+    showToast(t("msg_family_exists"),"error"); return;
+  }
+  fam.name=newName.trim(); saveDB();
+  renderFamilyList(); populateStockSelects(); populateBrandFamilySelect();
 }
 function deleteFamily(id){
-  safeConfirm(t("msg_confirm_delete_family"), function(){
-    DB.families=DB.families.filter(f=>f.id!==id);
-    DB.brands=DB.brands.filter(b=>b.familyId!==id);
-    saveDB(); renderFamilyList(); renderBrandList(); populateStockSelects(); populateBrandFamilySelect();
-    showToast("✅ تم حذف العائلة","success");
-  });
+  if (!window.confirm(t("msg_confirm_delete_family"))) return;
+  DB.families=DB.families.filter(f=>f.id!==id);
+  DB.brands=DB.brands.filter(b=>b.familyId!==id);
+  saveDB(); renderFamilyList(); renderBrandList(); populateStockSelects(); populateBrandFamilySelect();
 }
 function renderFamilyList(filter=""){
   const list=document.getElementById("familyList");
@@ -1384,18 +1051,14 @@ function addBrand(){
 }
 function editBrand(id){
   const brand=DB.brands.find(b=>b.id===id); if(!brand) return;
-  safeTextPrompt(t("edit_btn")+" — "+brand.name, brand.name, function(newName){
-    if (!newName||newName.trim()===brand.name) return;
-    brand.name=newName.trim(); saveDB(); renderBrandList(); populateStockSelects();
-    showToast("✅ تم تعديل الماركة","success");
-  });
+  const newName=window.prompt(t("edit_btn")+" — "+brand.name+":", brand.name);
+  if (!newName||newName.trim()===brand.name) return;
+  brand.name=newName.trim(); saveDB(); renderBrandList(); populateStockSelects();
 }
 function deleteBrand(id){
-  safeConfirm(t("msg_confirm_delete_brand"), function(){
-    DB.brands=DB.brands.filter(b=>b.id!==id);
-    saveDB(); renderBrandList(); populateStockSelects();
-    showToast("✅ تم حذف الماركة","success");
-  });
+  if (!window.confirm(t("msg_confirm_delete_brand"))) return;
+  DB.brands=DB.brands.filter(b=>b.id!==id);
+  saveDB(); renderBrandList(); populateStockSelects();
 }
 function renderBrandList(filter=""){
   const list=document.getElementById("brandList");
@@ -1536,20 +1199,15 @@ function saveItem(){
 
 function editItem(index){
   const item=DB.stock[index];
-  safePrompt(t("price_label")+" (الحالي: "+item.price+"):", function(newPrice){
-    if (newPrice!==""&&!isNaN(newPrice)) item.price=parseFloat(newPrice);
-    safePrompt(t("qty_label")+" (الحالي: "+item.qty+"):", function(newQty){
-      if (newQty!==""&&!isNaN(newQty)) item.qty=parseInt(newQty);
-      saveDB(); renderStock();
-      showToast("✅ تم تحديث المنتج","success");
-    }, String(item.qty));
-  }, String(item.price));
+  const newPrice=window.prompt(t("price_label")+":", item.price);
+  const newQty=window.prompt(t("qty_label")+":", item.qty);
+  if (newPrice!==null&&!isNaN(newPrice)) item.price=parseFloat(newPrice);
+  if (newQty!==null&&!isNaN(newQty))     item.qty=parseInt(newQty);
+  saveDB(); renderStock();
 }
 function deleteItem(index){
-  safeConfirm(t("msg_confirm_delete"), function(){
-    DB.stock.splice(index,1); saveDB(); renderStock();
-    showToast("✅ تم حذف المنتج","success");
-  });
+  if (!window.confirm(t("msg_confirm_delete"))) return;
+  DB.stock.splice(index,1); saveDB(); renderStock();
 }
 
 function renderStock(){
@@ -1598,18 +1256,16 @@ function renderStock(){
 function renderCustomerSelect(){
   custSelect.innerHTML=`<option value="">👤 — ${t("no_customers").replace("بعد","").trim()} —</option>`;
   DB.customers.forEach(c=>{
-    const o=document.createElement("option"); o.value=c.name; o.textContent=c.name; // الاسم فقط في واجهة البيع
+    const o=document.createElement("option"); o.value=c.name; o.textContent=c.name;
     custSelect.appendChild(o);
   });
 }
 function addCustomer(){
   const name=document.getElementById("cname").value.trim();
-  const phone=(document.getElementById("cphone")?.value||"").trim();
   if (!name){ showToast(t("msg_enter_customer"),"error"); return; }
   if (DB.customers.find(c=>c.name===name)){ showToast(t("msg_customer_exists"),"error"); return; }
-  DB.customers.push({name,phone,debts:[]});
+  DB.customers.push({name,debts:[]});
   document.getElementById("cname").value="";
-  if(document.getElementById("cphone")) document.getElementById("cphone").value="";
   saveDB(); renderCustomerList(); renderCustomerSelect();
   showToast("✅ تمت إضافة الزبون","success");
 }
@@ -1628,16 +1284,13 @@ function renderCustomerList(){
     const li=document.createElement("li");
     li.style.cssText="display:flex;justify-content:space-between;align-items:center;padding:10px 8px;border-bottom:1px solid var(--border)";
     li.innerHTML=`
-      <span><strong>${c.name}</strong>${c.phone?` <span style="color:var(--text3);font-size:12px;font-family:'IBM Plex Mono',monospace">📞 ${c.phone}</span>`:""}${totalDebt>0?` <span style="color:#ef4444;font-size:13px">(${formatPrice(totalDebt)})</span>`:""}</span>
+      <span><strong>${c.name}</strong>${totalDebt>0?` <span style="color:#ef4444;font-size:13px">(${formatPrice(totalDebt)})</span>`:""}</span>
       <button onclick="deleteCustomer(${index})" style="background:#ef4444;padding:5px 10px;font-size:13px">${t("del_btn")}</button>`;
     clist.appendChild(li);
   });
 }
 function deleteCustomer(index){
-  safeConfirm(t("msg_confirm_delete_customer"), function(){
-    DB.customers.splice(index,1); saveDB(); renderCustomerList(); renderCustomerSelect();
-    showToast("✅ تم حذف الزبون","success");
-  });
+  if (window.confirm(t("msg_confirm_delete_customer"))){ DB.customers.splice(index,1); saveDB(); renderCustomerList(); renderCustomerSelect(); }
 }
 
 /* ================================================
@@ -1669,70 +1322,36 @@ function addUser(e){
 }
 function editUser(index){
   const user = DB.users[index];
-  const logged = JSON.parse(localStorage.getItem("POSDZ_LOGGED"));
-  const isManager = logged && logged.role === "manager";
-  const canChangeRole = isManager && index !== DB.users.findIndex(u=>u.name===logged.name);
-
-  // مودال تعديل مخصص
-  let overlay = document.getElementById("editUserOverlay");
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.id = "editUserOverlay";
-    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)";
-    document.body.appendChild(overlay);
+  const nameIn  = window.prompt("✏️ اسم المستخدم الجديد:", user.name);
+  if (nameIn === null) return;
+  const pinIn   = window.prompt("🔑 PIN الجديد (4 أرقام):", "");
+  if (pinIn === null) return;
+  const newName = nameIn.trim() || user.name;
+  const newPin  = pinIn.trim();
+  if (newName !== user.name && DB.users.find((u,i) => u.name === newName && i !== index)) {
+    showToast(t("msg_user_exists"), "error"); return;
   }
-  overlay.innerHTML = `
-    <div style="background:var(--surface,#fff);border-radius:16px;padding:28px;max-width:380px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.25);border:1px solid var(--border,#e2e5f0)">
-      <h3 style="margin:0 0 20px;font-size:17px;font-weight:800;color:var(--text,#0f172a)">✏️ تعديل المستخدم</h3>
-      <label style="display:block;font-size:12px;font-weight:700;color:var(--text2,#475569);margin-bottom:5px">اسم المستخدم</label>
-      <input id="euName" value="${user.name}" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border,#e2e5f0);font-size:14px;margin-bottom:12px;box-sizing:border-box">
-      <label style="display:block;font-size:12px;font-weight:700;color:var(--text2,#475569);margin-bottom:5px">PIN جديد (4 أرقام — اتركه فارغاً للإبقاء على الحالي)</label>
-      <input id="euPin" type="password" placeholder="****" maxlength="4" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border,#e2e5f0);font-size:14px;margin-bottom:12px;box-sizing:border-box">
-      ${canChangeRole ? `
-      <label style="display:block;font-size:12px;font-weight:700;color:var(--text2,#475569);margin-bottom:5px">الدور</label>
-      <select id="euRole" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border,#e2e5f0);font-size:14px;margin-bottom:16px;box-sizing:border-box">
-        <option value="baker" ${user.role==="baker"?"selected":""}>بائع</option>
-        <option value="manager" ${user.role==="manager"?"selected":""}>مدير</option>
-      </select>` : `<div style="margin-bottom:16px"></div>`}
-      <div style="display:flex;gap:10px">
-        <button id="euCancel" style="flex:1;padding:11px;background:var(--bg2,#e8eaf2);color:var(--text,#0f172a);border-radius:10px;font-weight:700;font-size:14px;border:none;cursor:pointer">إلغاء</button>
-        <button id="euSave"   style="flex:1;padding:11px;background:linear-gradient(135deg,#6366f1,#a855f7);color:white;border-radius:10px;font-weight:700;font-size:14px;border:none;cursor:pointer">💾 حفظ</button>
-      </div>
-    </div>`;
-  overlay.style.display = "flex";
-  const close = () => { overlay.style.display = "none"; };
-  document.getElementById("euCancel").onclick = close;
-  overlay.onclick = (e) => { if(e.target===overlay) close(); };
-  document.getElementById("euSave").onclick = () => {
-    const newName = document.getElementById("euName").value.trim() || user.name;
-    const newPin  = document.getElementById("euPin").value.trim();
-    const newRole = canChangeRole ? document.getElementById("euRole").value : user.role;
-    if (newName !== user.name && DB.users.find((u,i)=>u.name===newName&&i!==index)){
-      showToast(t("msg_user_exists"),"error"); return;
-    }
-    if (newPin && (newPin.length!==4||!/^\d+$/.test(newPin))){
-      showToast(t("msg_pin_4"),"error"); return;
-    }
-    user.name = newName;
-    if (newPin) user.pin = newPin;
-    user.role = newRole;
-    if (logged && logged.name === user.name) localStorage.setItem("POSDZ_LOGGED", JSON.stringify(user));
-    saveDB(); renderUsersTable(); renderUserSelect(); renderAlerts();
-    showToast("✅ تم تعديل المستخدم بنجاح","success");
-    close();
-  };
+  if (newPin && (newPin.length !== 4 || !/^\d+$/.test(newPin))) {
+    showToast(t("msg_pin_4"), "error"); return;
+  }
+  const logged = JSON.parse(localStorage.getItem("POSDZ_LOGGED"));
+  let newRole = user.role;
+  if (logged && logged.role === "manager" && index !== DB.users.findIndex(u=>u.name===logged.name)) {
+    const roleIn = window.prompt("👤 الدور (manager / baker):", user.role);
+    if (roleIn && ["manager","baker"].includes(roleIn.trim())) newRole = roleIn.trim();
+  }
+  user.name = newName;
+  if (newPin) user.pin = newPin;
+  user.role = newRole;
+  if (logged && logged.name === (nameIn.trim() ? user.name : logged.name)) {
+    localStorage.setItem("POSDZ_LOGGED", JSON.stringify(user));
+  }
+  saveDB(); renderUsersTable(); renderUserSelect(); renderAlerts();
+  showToast("✅ تم تعديل المستخدم بنجاح", "success");
 }
 function deleteUser(index){
-  const user = DB.users[index];
-  if (!user) return;
-  if (user.immutable){ showToast(t("msg_cant_delete"),"error"); return; }
-  safeConfirm(t("msg_confirm_delete_user"), function(){
-    DB.users.splice(index,1);
-    /* ضمان بقاء Admin بعد أي حذف */
-    if (!DB.users.some(u=>u.immutable)) DB.users.unshift({ ...DEFAULT_ADMIN });
-    saveDB(); renderUsersTable(); renderUserSelect(); renderAlerts();
-    showToast("✅ تم حذف المستخدم","success");
-  });
+  if (DB.users[index].immutable){ showToast(t("msg_cant_delete"),"error"); return; }
+  if (window.confirm(t("msg_confirm_delete_user"))){ DB.users.splice(index,1); saveDB(); renderUsersTable(); renderUserSelect(); renderAlerts(); }
 }
 function renderAlerts(){
   const alertList=document.getElementById("alertList");
@@ -1858,7 +1477,6 @@ function addItem(){
   }
   document.getElementById("search").value="";
   document.getElementById("searchSuggestions")?.classList.add("hidden");
-  triggerSound('add');
   saveDB(); renderSaleStock();
 }
 function removeFromCart(index){ DB.cart.splice(index,1); saveDB(); renderSaleStock(); }
@@ -1889,257 +1507,11 @@ function pay(){
   if(!isNaN(paidVal)&&paidVal<total){ showToast(t("msg_low_balance"),"error"); return; }
   const change=!isNaN(paidVal)?paidVal-total:0;
   deductStock();
-  const saleData=buildSale("كامل",paidVal||total);
-  DB.sales.push(saleData);
+  DB.sales.push(buildSale("كامل",paidVal||total));
   DB.cart=[]; document.getElementById("paid").value="";
   saveDB();
-  triggerSound('pay');
   showToast(change>0?t("msg_change")+formatPrice(change):t("msg_sold"),"success");
   renderSaleStock(); renderReports();
-  showPrintModal(saleData, change);
-}
-
-/* ================================================
-   PRINT MODAL
-================================================ */
-function showPrintModal(saleData, change) {
-  const s = DB.settings;
-  const itemsHTML = (saleData.items || []).map(item =>
-    `<div class="pm-inv-item"><span class="pm-inv-name">${item.name}</span><span class="pm-inv-qty">x${item.qty}</span><span class="pm-inv-price">${formatPrice(item.price * item.qty)}</span></div>`
-  ).join("");
-  const logoHTML  = s.printLogo && s.logo ? `<img src="${s.logo}" class="pm-inv-logo" alt="logo">` : "";
-  const nameHTML  = s.printShopName ? `<div class="pm-inv-shop">${s.name||"POS DZ"}</div>` : "";
-  const phoneHTML = s.printPhone && s.phone ? `<div class="pm-inv-phone">  ${s.phone}</div>` : "";
-  const welcomeHTML = s.printWelcome && s.welcome ? `<div class="pm-inv-welcome">${s.welcome}</div>` : "";
-  const changeHTML = change > 0 ? `<div class="pm-inv-change">الباقي: <strong>${formatPrice(change)}</strong></div>` : "";
-  const customerHTML = saleData.customer && saleData.customer !== "—"
-    ? `<div class="pm-inv-row"><span>الزبون:</span><span>${saleData.customer}</span></div>` : "";
-
-  const invoiceBodyHTML = `
-    <div class="pm-inv-paper" id="pmPrintArea">
-      <div class="pm-inv-header">${logoHTML}${nameHTML}${phoneHTML}</div>
-      <div class="pm-inv-divider"></div>
-      <div class="pm-inv-row"><span>التاريخ:</span><span>${formatDate(saleData.date)}</span></div>
-      <div class="pm-inv-row"><span>رقم الفاتورة:</span><span>#${saleData.invoiceNum}</span></div>
-      ${customerHTML}
-      <div class="pm-inv-divider"></div>
-      <div class="pm-inv-items-head"><span>السلعة</span><span>ك</span><span>المبلغ</span></div>
-      ${itemsHTML}
-      <div class="pm-inv-divider"></div>
-      <div class="pm-inv-total"><span>المجموع:</span><span>${formatPrice(saleData.total)}</span></div>
-      <div class="pm-inv-paid"><span>المدفوع:</span><span>${formatPrice(saleData.paid)}</span></div>
-      ${changeHTML}${welcomeHTML}
-    </div>`;
-
-  let overlay = document.getElementById("printModalOverlay");
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.id = "printModalOverlay";
-    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99998;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)";
-    overlay.innerHTML = `
-      <div style="background:var(--surface,#fff);border-radius:20px;padding:24px;max-width:420px;width:94%;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
-        <div style="text-align:center;margin-bottom:16px">
-          <div style="font-size:20px;font-weight:800;color:var(--primary,#6366f1)"> فاتورة البيع</div>
-          <div style="font-size:13px;color:var(--text3,#94a3b8);margin-top:4px">تم تسجيل البيع بنجاح</div>
-        </div>
-        <div id="pmInvoiceBody"></div>
-        <div style="display:flex;gap:10px;margin-top:20px">
-          <button id="pmBtnPrint" style="flex:1;padding:13px;background:linear-gradient(135deg,#6366f1,#a855f7);color:white;border-radius:12px;font-weight:800;font-size:15px;border:none;cursor:pointer"> طباعة</button>
-          <button id="pmBtnClose" style="flex:1;padding:13px;background:var(--bg2,#e8eaf2);color:var(--text,#0f172a);border-radius:12px;font-weight:800;font-size:15px;border:none;cursor:pointer">X اغلاق</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-  }
-
-  document.getElementById("pmInvoiceBody").innerHTML = invoiceBodyHTML;
-  overlay.style.display = "flex";
-
-  document.getElementById("pmBtnClose").onclick = () => { overlay.style.display = "none"; };
-  document.getElementById("pmBtnPrint").onclick = () => {
-    const printArea = document.getElementById("pmPrintArea");
-    const pw = window.open("","_blank","width=450,height=700");
-    pw.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة</title>
-    <style>
-      /* ضبط الورقة بحجم المحتوى فقط - بدون هامش زائد */
-      @page {
-        size: ${(()=>{
-          const pt = DB&&DB.settings&&DB.settings.printer;
-          return pt==='thermal58'?'58mm auto':'80mm auto';
-        })()};
-        margin: 0mm;
-      }
-      * {
-        box-sizing: border-box;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-      html, body {
-        margin: 0 !important;
-        padding: 0 !important;
-        width: 72mm;
-        max-width: 72mm;
-        font-family: Arial, Helvetica, sans-serif;
-        font-size: 11pt;
-        color: #000;
-        background: #fff;
-        height: auto !important;
-      }
-      .pm-inv-paper {
-        width: 72mm;
-        max-width: 72mm;
-        padding: 3mm 2mm 6mm 2mm;
-        overflow: hidden;
-      }
-      /* رأس الفاتورة */
-      .pm-inv-header {
-        text-align: center;
-        margin-bottom: 2mm;
-      }
-      .pm-inv-logo {
-        max-height: 14mm;
-        margin: 0 auto 1mm;
-        display: block;
-      }
-      .pm-inv-shop {
-        font-size: 14pt;
-        font-weight: 900;
-        letter-spacing: 0.5px;
-        margin-bottom: 1mm;
-        color: #000;
-        text-transform: uppercase;
-      }
-      .pm-inv-phone {
-        font-size: 9pt;
-        color: #000;
-        margin-top: 0.5mm;
-        font-weight: 600;
-      }
-      /* فاصل منقط */
-      .pm-inv-divider {
-        border: none;
-        border-top: 0.4mm dashed #000;
-        margin: 1.5mm 0;
-        width: 100%;
-      }
-      /* صفوف التاريخ ورقم الفاتورة */
-      .pm-inv-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: baseline;
-        margin: 1mm 0;
-        font-size: 9pt;
-        color: #000;
-        font-weight: 700;
-        width: 100%;
-        overflow: hidden;
-      }
-      .pm-inv-row span:first-child { white-space: nowrap; }
-      .pm-inv-row span:last-child  { white-space: nowrap; font-weight: 900; }
-      /* رأس جدول السلع */
-      .pm-inv-items-head {
-        display: flex;
-        justify-content: space-between;
-        font-weight: 900;
-        font-size: 9pt;
-        margin: 1.5mm 0 1mm;
-        padding-bottom: 1mm;
-        border-bottom: 0.3mm solid #000;
-        color: #000;
-        width: 100%;
-      }
-      .pm-inv-items-head span:nth-child(1) { flex: 1; }
-      .pm-inv-items-head span:nth-child(2) { width: 7mm; text-align: center; }
-      .pm-inv-items-head span:nth-child(3) { width: 18mm; text-align: left; }
-      /* سطر كل سلعة */
-      .pm-inv-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: baseline;
-        margin: 1mm 0;
-        font-size: 9pt;
-        color: #000;
-        line-height: 1.4;
-        width: 100%;
-      }
-      .pm-inv-name  { flex: 1; font-weight: 700; word-break: break-word; padding-left: 1mm; }
-      .pm-inv-qty   { width: 7mm; text-align: center; font-weight: 700; white-space: nowrap; }
-      .pm-inv-price { width: 18mm; text-align: left; font-weight: 700; white-space: nowrap; }
-      /* المجموع */
-      .pm-inv-total {
-        display: flex;
-        justify-content: space-between;
-        font-weight: 900;
-        font-size: 12pt;
-        margin: 2mm 0 1mm;
-        color: #000;
-        width: 100%;
-      }
-      .pm-inv-total span:last-child { white-space: nowrap; }
-      /* المدفوع */
-      .pm-inv-paid {
-        display: flex;
-        justify-content: space-between;
-        font-size: 9pt;
-        margin: 1mm 0;
-        color: #000;
-        font-weight: 700;
-        width: 100%;
-      }
-      .pm-inv-paid span:last-child { white-space: nowrap; }
-      /* الباقي */
-      .pm-inv-change {
-        text-align: center;
-        margin-top: 2mm;
-        font-size: 10pt;
-        color: #000;
-        font-weight: 900;
-        border: 0.4mm solid #000;
-        border-radius: 1mm;
-        padding: 1mm 2mm;
-        width: 100%;
-      }
-      /* رسالة الترحيب */
-      .pm-inv-welcome {
-        text-align: center;
-        margin-top: 2mm;
-        font-size: 9pt;
-        color: #000;
-        font-weight: 700;
-        padding-top: 2mm;
-        border-top: 0.4mm dashed #000;
-        width: 100%;
-      }
-      /* منع الصفحة الثانية الفارغة */
-      @media print {
-        html, body { height: auto !important; overflow: hidden; }
-        .pm-inv-paper {
-          page-break-after: avoid;
-          page-break-inside: avoid;
-          orphans: 0;
-          widows: 0;
-        }
-      }
-    </style></head><body><div class="pm-inv-paper">${printArea.innerHTML}</div>
-    <script>
-      window.onload = function() {
-        setTimeout(function(){
-          window.print();
-        }, 200);
-        // إغلاق النافذة تلقائياً بعد الطباعة أو إلغائها
-        window.addEventListener('afterprint', function() {
-          window.close();
-        });
-        // احتياطي: إغلاق بعد 8 ثوانٍ إذا لم يُغلق تلقائياً
-        setTimeout(function(){ if(!window.closed) window.close(); }, 8000);
-      };
-    <\/script></body></html>`);
-    pw.document.close();
-    // إغلاق مودال الفاتورة تلقائياً فور الضغط على طباعة
-    const ov = document.getElementById('printModalOverlay');
-    if(ov) ov.style.display = 'none';
-  };
-
-  overlay.onclick = (e) => { if(e.target===overlay) overlay.style.display="none"; };
 }
 function partial(){
   if(!DB.cart.length){ showToast(t("msg_no_cart"),"error"); return; }
@@ -2302,8 +1674,6 @@ function renderDebts(){
   const debtCount=Object.keys(byCustomer).filter(k=>byCustomer[k]>0).length;
   document.getElementById("rTotalDebt").textContent=formatPrice(totalDebt);
   document.getElementById("rDebtCount").textContent=debtCount;
-  var ct=document.getElementById("cTotalDebt"); if(ct) ct.textContent=formatPrice(totalDebt);
-  var cc=document.getElementById("cDebtCount"); if(cc) cc.textContent=debtCount;
   const debtList=document.getElementById("debtList");
   debtList.innerHTML="";
   let entries=Object.entries(byCustomer).filter(([,v])=>v>0);
@@ -2325,22 +1695,21 @@ function renderDebts(){
   });
 }
 function settleDebt(customerName){
-  safePrompt(t("settle_prompt"), function(amount){
-    if(!amount||isNaN(amount)||Number(amount)<=0) return;
-    const pay=parseFloat(amount);
-    let remaining=pay;
-    (DB.debts||[]).forEach(d=>{
-      if(d.customer===customerName&&d.remaining>0&&remaining>0){
-        const deduct=Math.min(d.remaining,remaining);
-        d.remaining-=deduct; d.paid+=deduct; remaining-=deduct;
-      }
-    });
-    const customer=DB.customers.find(c=>c.name===customerName);
-    if(customer){ let r2=pay; (customer.debts||[]).forEach(d=>{ if(d.remaining>0&&r2>0){const x=Math.min(d.remaining,r2);d.remaining-=x;r2-=x;} }); }
-    saveDB();
-    showToast(t("settle_ok")+formatPrice(pay)+t("settle_from")+customerName,"success");
-    renderDebts();
+  const amount=window.prompt(t("settle_prompt"));
+  if(!amount||isNaN(amount)||Number(amount)<=0) return;
+  const pay=parseFloat(amount);
+  let remaining=pay;
+  (DB.debts||[]).forEach(d=>{
+    if(d.customer===customerName&&d.remaining>0&&remaining>0){
+      const deduct=Math.min(d.remaining,remaining);
+      d.remaining-=deduct; d.paid+=deduct; remaining-=deduct;
+    }
   });
+  const customer=DB.customers.find(c=>c.name===customerName);
+  if(customer){ let r2=pay; (customer.debts||[]).forEach(d=>{ if(d.remaining>0&&r2>0){const x=Math.min(d.remaining,r2);d.remaining-=x;r2-=x;} }); }
+  saveDB();
+  showToast(t("settle_ok")+formatPrice(pay)+t("settle_from")+customerName,"success");
+  renderDebts();
 }
 function renderSalesLog(sales){
   const salesLog=document.getElementById("salesLog");
@@ -2365,22 +1734,26 @@ function renderSalesLog(sales){
 ================================================ */
 function clearSalesData(period) {
   const confirmMsg = period==="month" ? t("msg_clear_month_confirm") : t("msg_clear_year_confirm");
-  safeConfirm(confirmMsg, function(){
-    const now = new Date();
-    if (period === "month") {
-      DB.sales = (DB.sales||[]).filter(s=>!isSameMonth(new Date(s.date),now));
-      DB.debts  = (DB.debts||[]).filter(d=>!isSameMonth(new Date(d.date),now));
-    } else {
-      DB.sales = (DB.sales||[]).filter(s=>!isSameYear(new Date(s.date),now));
-      DB.debts  = (DB.debts||[]).filter(d=>!isSameYear(new Date(d.date),now));
-      DB.customers.forEach(c=>{
-        if (c.debts) c.debts = c.debts.filter(d=>!isSameYear(new Date(d.date),now));
-      });
-    }
-    saveDB();
-    showToast(t("msg_clear_done"), "success");
-    renderReports();
-  });
+  const ans = window.prompt(confirmMsg + "\n\nاكتب 'نعم' للتأكيد:");
+  const confirmWord = DB.settings.lang==="fr"?"oui": DB.settings.lang==="en"?"yes":"نعم";
+  if (!ans || ans.trim().toLowerCase() !== confirmWord) {
+    showToast(t("msg_clear_cancel"), "info"); return;
+  }
+  const now = new Date();
+  if (period === "month") {
+    DB.sales = (DB.sales||[]).filter(s=>!isSameMonth(new Date(s.date),now));
+    DB.debts  = (DB.debts||[]).filter(d=>!isSameMonth(new Date(d.date),now));
+  } else {
+    DB.sales = (DB.sales||[]).filter(s=>!isSameYear(new Date(s.date),now));
+    DB.debts  = (DB.debts||[]).filter(d=>!isSameYear(new Date(d.date),now));
+    // مسح الديون المرتبطة من الزبائن أيضاً
+    DB.customers.forEach(c=>{
+      if (c.debts) c.debts = c.debts.filter(d=>!isSameYear(new Date(d.date),now));
+    });
+  }
+  saveDB();
+  showToast(t("msg_clear_done"), "success");
+  renderReports();
 }
 
 /* ================================================
@@ -2397,162 +1770,8 @@ function startClock(){
   updateTime(); setInterval(updateTime,1000);
 }
 
-
 /* ================================================
-   PRINT ENGINE — محرك طباعة موثوق عبر iframe
-   يعمل مع GitHub Pages بدون قيود Blob/popup
-================================================ */
-function _printHtml(htmlContent) {
-  // إزالة أي iframe سابق
-  const old = document.getElementById('_printFrame');
-  if (old) old.remove();
-
-  const iframe = document.createElement('iframe');
-  iframe.id = '_printFrame';
-  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;visibility:hidden';
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentDocument || iframe.contentWindow.document;
-  doc.open();
-  doc.write(htmlContent);
-  doc.close();
-
-  // ننتظر تحميل المحتوى ثم نطبع
-  iframe.onload = function() {
-    setTimeout(function() {
-      try {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-      } catch(e) {
-        window.print();
-      }
-      // تنظيف بعد الطباعة
-      setTimeout(function() {
-        const f = document.getElementById('_printFrame');
-        if (f) f.remove();
-      }, 3000);
-    }, 250);
-  };
-}
-
-
-/* ================================================
-   CUSTOMER TABS
-================================================ */
-function switchCustTab(tab, btn) {
-  document.querySelectorAll('.ctab').forEach(function(b){ b.classList.remove('active'); });
-  document.querySelectorAll('.cust-panel').forEach(function(p){ p.classList.remove('active'); });
-  if (btn) btn.classList.add('active');
-  var panel = document.getElementById(tab === 'list' ? 'custTabList' : 'custTabDebts');
-  if (panel) panel.classList.add('active');
-  if (tab === 'debts') renderDebts();
-  if (tab === 'list')  renderCustomerList();
-}
-
-/* ================================================
-   DAILY CLOSE
-================================================ */
-function showDailyClose() {
-  var today = new Date();
-  var todaySales = filterSalesByPeriod('daily');
-  var revenue = 0, cost = 0, cashSales = 0, debtSales = 0;
-  todaySales.forEach(function(s) {
-    s.items.forEach(function(i){ revenue += i.price*i.qty; cost += (i.cost||0)*i.qty; });
-    if (s.type === 'دين') debtSales += s.total;
-    else cashSales += s.paid || s.total;
-  });
-  var profit = revenue - cost;
-  var byC = (DB.debts||[]).reduce(function(acc,d){ acc[d.customer]=(acc[d.customer]||0)+(d.remaining||0); return acc; },{});
-  var totalDebt = Object.values(byC).reduce(function(s,v){ return s+v; }, 0);
-
-  var overlay = document.getElementById('dailyCloseOverlay');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = 'dailyCloseOverlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99997;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
-    document.body.appendChild(overlay);
-  }
-
-  overlay.innerHTML = [
-    '<div style="background:var(--surface);border-radius:20px;padding:24px;max-width:440px;width:94%;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.3)">',
-      '<div style="text-align:center;margin-bottom:18px">',
-        '<div style="font-size:24px">&#9733;</div>',
-        '<div style="font-size:18px;font-weight:900;color:var(--primary)">تقرير إقفال اليوم</div>',
-        '<div style="font-size:13px;color:var(--text3);margin-top:4px">' + formatDate(today.toISOString()) + '</div>',
-      '</div>',
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">',
-        '<div class="dc-card green"><div class="dc-label">🛒 عمليات البيع</div><div class="dc-val">' + todaySales.length + '</div></div>',
-        '<div class="dc-card blue"><div class="dc-label">💰 المداخيل</div><div class="dc-val">' + formatPrice(revenue) + '</div></div>',
-        '<div class="dc-card orange"><div class="dc-label">💵 النقد المحصّل</div><div class="dc-val">' + formatPrice(cashSales) + '</div></div>',
-        '<div class="dc-card purple"><div class="dc-label">📈 صافي الربح</div><div class="dc-val">' + formatPrice(profit) + '</div></div>',
-        '<div class="dc-card red"><div class="dc-label">📋 مبيعات بالدين</div><div class="dc-val">' + formatPrice(debtSales) + '</div></div>',
-        '<div class="dc-card indigo"><div class="dc-label">⚠️ إجمالي الديون</div><div class="dc-val">' + formatPrice(totalDebt) + '</div></div>',
-      '</div>',
-      '<div style="background:linear-gradient(135deg,#f59e0b,#d97706);border-radius:12px;padding:14px;text-align:center;margin-bottom:16px;color:white">',
-        '<div style="font-size:13px;opacity:0.9">صافي الإيراد اليومي</div>',
-        '<div style="font-size:22px;font-weight:900">' + formatPrice(profit) + '</div>',
-      '</div>',
-      '<div style="display:flex;gap:8px">',
-        '<button onclick="printDailyClose()" style="flex:1;padding:12px;background:linear-gradient(135deg,#6366f1,#a855f7);color:white;border-radius:10px;font-weight:800;font-size:14px;border:none;cursor:pointer">🖨️ طباعة</button>',
-        '<button id="dcCloseBtn" style="flex:1;padding:12px;background:var(--bg2);color:var(--text);border-radius:10px;font-weight:800;font-size:14px;border:none;cursor:pointer">✖ إغلاق</button>',
-      '</div>',
-    '</div>'
-  ].join('');
-
-  overlay.style.display = 'flex';
-  var closeBtn = document.getElementById('dcCloseBtn');
-  if (closeBtn) closeBtn.onclick = function(){ overlay.style.display='none'; };
-  overlay.onclick = function(e){ if(e.target===overlay) overlay.style.display='none'; };
-}
-
-function printDailyClose() {
-  var today = new Date();
-  var todaySales = filterSalesByPeriod('daily');
-  var revenue = 0, cost = 0, cashSales = 0, debtSales = 0;
-  todaySales.forEach(function(s) {
-    s.items.forEach(function(i){ revenue += i.price*i.qty; cost += (i.cost||0)*i.qty; });
-    if (s.type === 'دين') debtSales += s.total;
-    else cashSales += s.paid || s.total;
-  });
-  var st = DB.settings;
-  var css = [
-    '@page{size:80mm auto;margin:0mm}',
-    '*{box-sizing:border-box}',
-    'html,body{margin:0!important;padding:0!important;width:72mm;font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:#000;direction:rtl}',
-    '.w{width:72mm;padding:3mm 3mm 8mm}',
-    '.ti{text-align:center;font-size:14pt;font-weight:900;margin-bottom:1mm}',
-    '.su{text-align:center;font-size:9pt;color:#333;margin-bottom:3mm}',
-    'hr{border:none;border-top:0.4mm dashed #000;margin:2mm 0;width:100%}',
-    '.ro{display:flex;justify-content:space-between;margin:1.5mm 0;font-size:9.5pt;font-weight:700}',
-    '.to{display:flex;justify-content:space-between;font-size:13pt;font-weight:900;margin:3mm 0}',
-    '.fo{text-align:center;font-size:9pt;margin-top:4mm;padding-top:2mm;border-top:0.4mm dashed #000}',
-    '@media print{html,body{height:auto!important}}'
-  ].join('');
-
-  var body = [
-    '<div class="w">',
-    '<div class="ti">' + (st.name||'POS DZ') + '</div>',
-    '<div class="su">تقرير إقفال اليوم &#8212; ' + formatDate(today.toISOString()) + '</div>',
-    '<hr>',
-    '<div class="ro"><span>عمليات البيع:</span><span>' + todaySales.length + '</span></div>',
-    '<div class="ro"><span>المداخيل:</span><span>' + formatPrice(revenue) + '</span></div>',
-    '<div class="ro"><span>النقد المحصّل:</span><span>' + formatPrice(cashSales) + '</span></div>',
-    '<div class="ro"><span>مبيعات بالدين:</span><span>' + formatPrice(debtSales) + '</span></div>',
-    '<div class="ro"><span>تكلفة الشراء:</span><span>' + formatPrice(cost) + '</span></div>',
-    '<hr>',
-    '<div class="to"><span>صافي الربح:</span><span>' + formatPrice(revenue-cost) + '</span></div>',
-    '<hr>',
-    '<div class="fo">' + (st.name||'POS DZ') + '</div>',
-    '</div>'
-  ].join('');
-
-  var html = '<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><style>' + css + '</style></head><body>' + body + '</body></html>';
-  _printHtml(html);
-}
-
-
-/* ================================================
-   INIT — التهيئة الآمنة الشاملة
+   INIT
 ================================================ */
 addUserForm.addEventListener("submit", addUser);
 addUserInAlerts.addEventListener("submit", addUserInAlertsFunc);
@@ -2568,37 +1787,445 @@ renderFamilyList();
 renderBrandList();
 loadAppearanceSettings();
 
-/* التحقق من جلسة المستخدم المحفوظة */
-(function initSession() {
-  let logged = null;
-  try { logged = JSON.parse(localStorage.getItem("POSDZ_LOGGED")); } catch(e) { logged = null; }
+const logged=JSON.parse(localStorage.getItem("POSDZ_LOGGED"));
+if(logged){
+  loginScreen.style.display="none";
+  mainApp.style.display="block";
+  applyHeader(); showSale(); startClock();
+  checkAutoBackup();
+} else {
+  loginScreen.style.display="flex";
+  mainApp.style.display="none";
+}
 
-  /* التحقق من أن المستخدم المحفوظ لا يزال موجوداً في قاعدة البيانات */
-  if (logged && logged.name) {
-    const stillExists = DB.users.find(u => u.name === logged.name && u.pin === logged.pin);
-    if (!stillExists) {
-      localStorage.removeItem("POSDZ_LOGGED");
-      logged = null;
-    }
+/* ================================================
+   SOUND SYSTEM — نظام الأصوات
+================================================ */
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let _audioCtx = null;
+function getAudioCtx(){
+  if (!_audioCtx) { try { _audioCtx = new AudioCtx(); } catch(e){} }
+  return _audioCtx;
+}
+
+function playTone(type) {
+  const s = DB.settings.sounds || {};
+  const map = { add:'add', sale:'sale', error:'error', click:'click' };
+  if (!s[map[type]]) return;
+  const ctx = getAudioCtx(); if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain); gain.connect(ctx.destination);
+  const now = ctx.currentTime;
+  switch(type) {
+    case 'add':
+      // نغمة صاعدة — إضافة منتج
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.exponentialRampToValueAtTime(1320, now + 0.12);
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+      osc.start(now); osc.stop(now + 0.22);
+      break;
+    case 'sale':
+      // نغمتان سعيدتان — إتمام البيع
+      [0,0.15].forEach((delay, i) => {
+        const o2 = ctx.createOscillator();
+        const g2 = ctx.createGain();
+        o2.connect(g2); g2.connect(ctx.destination);
+        o2.type = 'sine';
+        o2.frequency.setValueAtTime(i===0?880:1100, now+delay);
+        g2.gain.setValueAtTime(0.2, now+delay);
+        g2.gain.exponentialRampToValueAtTime(0.001, now+delay+0.18);
+        o2.start(now+delay); o2.stop(now+delay+0.2);
+      });
+      break;
+    case 'error':
+      // نغمة هبوطية حادة
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(400, now);
+      osc.frequency.exponentialRampToValueAtTime(180, now + 0.25);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+      osc.start(now); osc.stop(now + 0.28);
+      break;
+    case 'click':
+      // نقرة خفيفة
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1200, now);
+      gain.gain.setValueAtTime(0.07, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+      osc.start(now); osc.stop(now + 0.06);
+      break;
   }
+}
 
-  if (logged) {
-    loginScreen.style.display = "none";
-    mainApp.style.display     = "block";
-    applyHeader(); showSale(); startClock();
-    checkAutoBackup();
-  } else {
-    loginScreen.style.display = "flex";
-    mainApp.style.display     = "none";
-    /* تلميح بيانات الدخول الافتراضية إن لم يكن هناك مستخدم آخر */
-    setTimeout(()=>{
-      if (DB.users.length === 1 && DB.users[0].immutable) {
-        const lm = document.getElementById("loginMsg");
-        if (lm && !lm.textContent) {
-          lm.textContent = "مرحباً 👋 الرجاء اختيار المستخدم وإدخال رمز PIN";
-          lm.className = "login-msg info";
-        }
+function saveSoundSetting(key, val) {
+  if (!DB.settings.sounds) DB.settings.sounds = {};
+  DB.settings.sounds[key] = val;
+  saveDB();
+  if (val) playTone(key);
+}
+
+function loadSoundSettings() {
+  const s = DB.settings.sounds || {};
+  const ids = ['sSoundAdd','sSoundSale','sSoundError','sSoundClick'];
+  const keys= ['add','sale','error','click'];
+  ids.forEach((id,i)=>{ const el=document.getElementById(id); if(el) el.checked=!!s[keys[i]]; });
+}
+
+function testAllSounds() {
+  const delays = [0, 350, 700, 1050];
+  const types  = ['click','add','sale','error'];
+  const orig   = DB.settings.sounds || {};
+  // تفعيل مؤقت لكل الأصوات للاختبار
+  DB.settings.sounds = { add:true, sale:true, error:true, click:true };
+  delays.forEach((d,i) => setTimeout(()=>playTone(types[i]), d));
+  setTimeout(()=>{ DB.settings.sounds = orig; }, 1500);
+}
+
+/* ================================================
+   BARCODE SCANNER — قارئ الباركود
+================================================ */
+let barcodeBuffer = '';
+let barcodeTimer  = null;
+const BARCODE_THRESHOLD = 80; // ms بين ضغطات الباركود
+const BARCODE_MIN_LEN   = 4;
+
+function initBarcodeScanner() {
+  document.addEventListener('keydown', function(e) {
+    // نتجاهل المدخلات إذا كان المستخدم يكتب في حقل نص آخر (ماعدا حقل البحث)
+    const active = document.activeElement;
+    const tag = active ? active.tagName : '';
+    const isSearchInput = active && active.id === 'search';
+    const isOtherInput  = (tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') && !isSearchInput;
+    if (isOtherInput) return;
+
+    // فقط في صفحة البيع
+    const salePage = document.getElementById('sale');
+    if (!salePage || !salePage.classList.contains('active')) return;
+
+    if (e.key === 'Enter') {
+      clearTimeout(barcodeTimer);
+      if (barcodeBuffer.length >= BARCODE_MIN_LEN) {
+        handleBarcodeInput(barcodeBuffer.trim());
       }
-    }, 600);
+      barcodeBuffer = '';
+      return;
+    }
+    // نقبل فقط الأحرف والأرقام والشرطات
+    if (e.key.length === 1) {
+      barcodeBuffer += e.key;
+      clearTimeout(barcodeTimer);
+      barcodeTimer = setTimeout(()=>{ barcodeBuffer=''; }, 500);
+    }
+  });
+}
+
+function handleBarcodeInput(code) {
+  // ابحث عن المنتج في المخزون
+  const item = DB.stock.find(i =>
+    i.barcode === code ||
+    i.barcode.toLowerCase() === code.toLowerCase()
+  );
+  if (!item) {
+    // ضع الكود في خانة البحث للإدخال اليدوي
+    const searchEl = document.getElementById('search');
+    if (searchEl) { searchEl.value = code; searchSuggestions(); }
+    playTone('error');
+    showToast('⚠️ باركود غير موجود — يمكن البحث يدوياً', 'info');
+    return;
   }
-})();
+  if (item.qty <= 0) {
+    playTone('error');
+    showToast(t('msg_out_of_stock'), 'error');
+    return;
+  }
+  // إضافة للعربة مباشرة
+  const cartItem = DB.cart.find(c => c.barcode === item.barcode);
+  if (cartItem) {
+    if (cartItem.qty >= item.qty) { playTone('error'); showToast(t('msg_not_enough'),'error'); return; }
+    cartItem.qty += 1;
+  } else {
+    DB.cart.push({ name:`${item.type} ${item.brand}`, barcode:item.barcode, price:item.price, costPrice:item.costPrice||0, qty:1 });
+  }
+  saveDB(); renderSaleStock();
+  playTone('add');
+  showToast(`✅ تمت إضافة: ${item.type} ${item.brand}`, 'success');
+  // مسح خانة البحث
+  const searchEl = document.getElementById('search');
+  if (searchEl) { searchEl.value=''; document.getElementById('searchSuggestions')?.classList.add('hidden'); }
+}
+
+/* ================================================
+   PRINTER SCAN — البحث عن الطابعات
+================================================ */
+async function scanForPrinters() {
+  const btn    = document.getElementById('btnScanPrinters');
+  const status = document.getElementById('printerScanStatus');
+  const extra  = document.getElementById('extraPrintersList');
+  if (!btn || !status) return;
+
+  btn.disabled = true;
+  btn.textContent = '⏳ جاري البحث...';
+  status.textContent = '🔍 يتم البحث عن الطابعات المتصلة...';
+  status.className = 'printer-scan-status scanning';
+
+  // محاكاة فحص الطابعات عبر Web API
+  let found = [];
+  try {
+    // محاولة استخدام window.print API لاكتشاف الطابعات
+    if (navigator.printing) {
+      const printers = await navigator.printing.getPrinters();
+      found = printers.map(p => ({ name: p.name || p.id, type: 'detected' }));
+    }
+  } catch(e) {}
+
+  // إذا لم يُكتشف شيء، نستخدم اكتشاف محسّن
+  if (!found.length) {
+    await new Promise(r => setTimeout(r, 1800));
+    // إضافة طابعات شائعة مكتشفة تلقائياً
+    found = detectCommonPrinters();
+  }
+
+  if (extra) {
+    extra.innerHTML = '';
+    found.forEach(p => {
+      const val = 'detected_' + p.name.replace(/\s+/g,'_').toLowerCase();
+      if (['default','thermal','inkjet'].includes(val)) return;
+      const div = document.createElement('div');
+      div.className = 'printer-item';
+      div.dataset.value = val;
+      div.setAttribute('onclick', `selectPrinter(this,'${val}')`);
+      div.innerHTML = `
+        <span class="printer-icon">🖨️</span>
+        <div>
+          <div class="printer-name">${p.name}</div>
+          <div class="printer-type">${p.type==='detected'?'✅ مكتشف تلقائياً':'طابعة متصلة'}</div>
+        </div>
+        <span class="printer-check" id="printerCheck_${val}"></span>`;
+      extra.appendChild(div);
+    });
+  }
+
+  status.textContent = found.length
+    ? `✅ تم اكتشاف ${found.length} طابعة إضافية.`
+    : '✅ لا توجد طابعات إضافية. يمكنك استخدام الطابعات المدرجة.';
+  status.className = 'printer-scan-status found';
+  btn.disabled = false;
+  btn.textContent = '🔍 بحث عن طابعات جديدة';
+}
+
+function detectCommonPrinters() {
+  // كشف ذكي للطابعات الشائعة
+  const ua = navigator.userAgent.toLowerCase();
+  const printers = [];
+  if (ua.includes('win')) {
+    printers.push({ name:'Microsoft Print to PDF', type:'مدمج مع Windows' });
+    printers.push({ name:'XPS Document Writer', type:'Windows XPS' });
+  }
+  if (ua.includes('mac')) {
+    printers.push({ name:'PDF (macOS)', type:'مدمج مع macOS' });
+  }
+  return printers;
+}
+
+function selectPrinter(el, val) {
+  // إلغاء تفعيل كل الطابعات
+  document.querySelectorAll('.printer-item').forEach(i => {
+    i.classList.remove('active');
+    const check = i.querySelector('.printer-check');
+    if (check) check.textContent = '';
+  });
+  // تفعيل المختارة
+  el.classList.add('active');
+  const check = el.querySelector('.printer-check');
+  if (check) check.textContent = '✔';
+  // حفظ القيمة
+  const hidden = document.getElementById('sPrinter');
+  if (hidden) hidden.value = val;
+  DB.settings.printer = val; saveDB();
+  playTone('click');
+}
+
+function loadPrinterSettings() {
+  const saved = DB.settings.printer || 'default';
+  // تفعيل الطابعة المحفوظة
+  document.querySelectorAll('.printer-item').forEach(item => {
+    const val = item.dataset.value;
+    const isActive = val === saved;
+    item.classList.toggle('active', isActive);
+    const check = item.querySelector('.printer-check');
+    if (check) check.textContent = isActive ? '✔' : '';
+  });
+  const hidden = document.getElementById('sPrinter');
+  if (hidden) hidden.value = saved;
+}
+
+/* ================================================
+   PARTIAL RESET — المسح الجزئي
+================================================ */
+function confirmPartialReset(type) {
+  const confirmWord = DB.settings.lang==='fr'?'oui': DB.settings.lang==='en'?'yes':'نعم';
+  let msg = '';
+  if (type==='sales')           msg = 'سيتم مسح جميع المبيعات والفواتير.\nاكتب "نعم" للتأكيد:';
+  else if (type==='customers')  msg = 'سيتم مسح بيانات الزبائن والديون.\nاكتب "نعم" للتأكيد:';
+  else                          msg = 'سيتم المسح الجزئي الشامل (مبيعات + زبائن + ديون).\nتبقى المنتجات والعائلات والماركات.\nاكتب "نعم" للتأكيد:';
+
+  const ans = window.prompt(msg);
+  if (!ans || ans.trim().toLowerCase() !== confirmWord) {
+    showToast('تم إلغاء العملية', 'info'); return;
+  }
+
+  if (type === 'sales' || type === 'all_except_stock') {
+    DB.sales = [];
+    DB.debts = [];
+    DB.settings.invoiceNum = 1;
+  }
+  if (type === 'customers' || type === 'all_except_stock') {
+    DB.customers = [];
+    DB.debts = [];
+  }
+  saveDB();
+  showToast('✅ تم المسح الجزئي بنجاح.', 'success');
+  renderReports();
+  renderCustomerList();
+  renderCustomerSelect();
+}
+
+/* ================================================
+   OVERRIDE: addCustomer — with phone support
+================================================ */
+const _origAddCustomer = addCustomer;
+addCustomer = function() {
+  const name  = document.getElementById('cname').value.trim();
+  const phone = document.getElementById('cphone')?.value.trim() || '';
+  if (!name){ showToast(t('msg_enter_customer'),'error'); return; }
+  if (DB.customers.find(c=>c.name===name)){ showToast(t('msg_customer_exists'),'error'); return; }
+  DB.customers.push({ name, phone, debts:[] });
+  document.getElementById('cname').value = '';
+  if (document.getElementById('cphone')) document.getElementById('cphone').value = '';
+  saveDB(); renderCustomerList(); renderCustomerSelect();
+  showToast('✅ تمت إضافة الزبون', 'success');
+  playTone('add');
+};
+
+/* ================================================
+   OVERRIDE: renderCustomerList — show phone
+================================================ */
+const _origRenderCustomerList = renderCustomerList;
+renderCustomerList = function() {
+  const clist = document.getElementById('clist');
+  clist.innerHTML = '';
+  const q = (document.getElementById('customerSearch')?.value||'').toLowerCase().trim();
+  let customers = DB.customers;
+  if (q) customers = customers.filter(c =>
+    c.name.toLowerCase().includes(q) ||
+    (c.phone && c.phone.includes(q))
+  );
+  if (!customers.length){
+    clist.innerHTML=`<li style="color:var(--text3);text-align:center;padding:20px">${q?'لا نتائج للبحث':t('no_customers')}</li>`; return;
+  }
+  customers.forEach(c => {
+    const index = DB.customers.indexOf(c);
+    const totalDebt = (c.debts||[]).reduce((s,d)=>s+(d.remaining||0),0);
+    const li = document.createElement('li');
+    li.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 8px;border-bottom:1px solid var(--border)';
+    li.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <div>
+          <strong>${c.name}</strong>
+          ${totalDebt>0?`<span style="color:#ef4444;font-size:13px;margin-right:6px">(${formatPrice(totalDebt)})</span>`:''}
+        </div>
+        ${c.phone?`<span class="customer-phone-badge">📱 ${c.phone}</span>`:''}
+      </div>
+      <button onclick="deleteCustomer(${index})" style="background:#ef4444;padding:5px 10px;font-size:13px">${t('del_btn')}</button>`;
+    clist.appendChild(li);
+  });
+};
+
+/* renderCustomerSelect — shows name only (no phone) */
+const _origRenderCustomerSelect = renderCustomerSelect;
+renderCustomerSelect = function() {
+  custSelect.innerHTML=`<option value="">👤 — ${t('no_customers').replace('بعد','').trim()} —</option>`;
+  DB.customers.forEach(c=>{
+    const o=document.createElement('option'); o.value=c.name; o.textContent=c.name;
+    custSelect.appendChild(o);
+  });
+};
+
+/* ================================================
+   OVERRIDE: pay / partial / toDebt — add sounds
+================================================ */
+const _origPay = pay;
+pay = function() {
+  if(!DB.cart.length){ playTone('error'); showToast(t('msg_no_cart'),'error'); return; }
+  const paidVal=parseFloat(document.getElementById('paid').value);
+  const total=getCartTotal();
+  if(!isNaN(paidVal)&&paidVal<total){ playTone('error'); showToast(t('msg_low_balance'),'error'); return; }
+  const change=!isNaN(paidVal)?paidVal-total:0;
+  deductStock();
+  DB.sales.push(buildSale('كامل',paidVal||total));
+  DB.cart=[]; document.getElementById('paid').value='';
+  saveDB();
+  playTone('sale');
+  showToast(change>0?t('msg_change')+formatPrice(change):t('msg_sold'),'success');
+  renderSaleStock(); renderReports();
+};
+
+/* ================================================
+   OVERRIDE: addItem — add sounds
+================================================ */
+const _origAddItem = addItem;
+addItem = function() {
+  const val=document.getElementById('search').value.trim().toLowerCase();
+  if(!val){ playTone('error'); showToast(t('msg_enter_search'),'error'); return; }
+  const item=DB.stock.find(i=>i.type.toLowerCase().includes(val)||i.brand.toLowerCase().includes(val)||i.barcode===val||i.barcode.includes(val));
+  if(!item){ playTone('error'); showToast(t('msg_not_found'),'error'); return; }
+  if(item.qty<=0){ playTone('error'); showToast(t('msg_out_of_stock'),'error'); return; }
+  const cartItem=DB.cart.find(c=>c.barcode===item.barcode);
+  if(cartItem){
+    if(cartItem.qty>=item.qty){ playTone('error'); showToast(t('msg_not_enough'),'error'); return; }
+    cartItem.qty+=1;
+  } else {
+    DB.cart.push({name:`${item.type} ${item.brand}`,barcode:item.barcode,price:item.price,costPrice:item.costPrice,qty:1});
+  }
+  document.getElementById('search').value='';
+  document.getElementById('searchSuggestions')?.classList.add('hidden');
+  saveDB(); renderSaleStock();
+  playTone('add');
+};
+
+/* ================================================
+   BUTTON CLICK SOUND — نقرة الأزرار
+================================================ */
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  // استثناء أزرار الصوت نفسها
+  const skip = ['sSoundAdd','sSoundSale','sSoundError','sSoundClick'].some(id=> btn.closest(`#${id}`));
+  if (skip) return;
+  playTone('click');
+});
+
+/* ================================================
+   OVERRIDE loadSettings — add sound & printer load
+================================================ */
+const _origLoadSettings = loadSettings;
+loadSettings = function() {
+  _origLoadSettings();
+  loadSoundSettings();
+  // تأجير تحميل الطابعات قليلاً للتأكد من وجود DOM
+  setTimeout(loadPrinterSettings, 80);
+};
+
+/* ================================================
+   INIT NEW FEATURES
+================================================ */
+document.addEventListener('DOMContentLoaded', function() {
+  initBarcodeScanner();
+});
+// تشغيل فوري إذا DOM جاهز
+if (document.readyState !== 'loading') {
+  initBarcodeScanner();
+}

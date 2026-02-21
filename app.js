@@ -1,6 +1,5 @@
 
 
-
 /* ================================================
    TRANSLATIONS — نظام الترجمة
 ================================================ */
@@ -2301,12 +2300,10 @@ function renderDebts(){
   });
   const totalDebt=Object.values(byCustomer).reduce((s,v)=>s+v,0);
   const debtCount=Object.keys(byCustomer).filter(k=>byCustomer[k]>0).length;
-  // تحديث بطاقات في التقارير
   document.getElementById("rTotalDebt").textContent=formatPrice(totalDebt);
   document.getElementById("rDebtCount").textContent=debtCount;
-  // تحديث بطاقات في قسم الزبائن
-  const ct=document.getElementById("cTotalDebt"); if(ct) ct.textContent=formatPrice(totalDebt);
-  const cc=document.getElementById("cDebtCount"); if(cc) cc.textContent=debtCount;
+  var ct=document.getElementById("cTotalDebt"); if(ct) ct.textContent=formatPrice(totalDebt);
+  var cc=document.getElementById("cDebtCount"); if(cc) cc.textContent=debtCount;
   const debtList=document.getElementById("debtList");
   debtList.innerHTML="";
   let entries=Object.entries(byCustomer).filter(([,v])=>v>0);
@@ -2402,37 +2399,73 @@ function startClock(){
 
 
 /* ================================================
-   CUSTOMER TABS — تبويبات الزبائن
+   PRINT ENGINE — محرك طباعة موثوق عبر iframe
+   يعمل مع GitHub Pages بدون قيود Blob/popup
+================================================ */
+function _printHtml(htmlContent) {
+  // إزالة أي iframe سابق
+  const old = document.getElementById('_printFrame');
+  if (old) old.remove();
+
+  const iframe = document.createElement('iframe');
+  iframe.id = '_printFrame';
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;visibility:hidden';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow.document;
+  doc.open();
+  doc.write(htmlContent);
+  doc.close();
+
+  // ننتظر تحميل المحتوى ثم نطبع
+  iframe.onload = function() {
+    setTimeout(function() {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch(e) {
+        window.print();
+      }
+      // تنظيف بعد الطباعة
+      setTimeout(function() {
+        const f = document.getElementById('_printFrame');
+        if (f) f.remove();
+      }, 3000);
+    }, 250);
+  };
+}
+
+
+/* ================================================
+   CUSTOMER TABS
 ================================================ */
 function switchCustTab(tab, btn) {
-  document.querySelectorAll('.ctab').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.cust-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.ctab').forEach(function(b){ b.classList.remove('active'); });
+  document.querySelectorAll('.cust-panel').forEach(function(p){ p.classList.remove('active'); });
   if (btn) btn.classList.add('active');
-  const panel = document.getElementById(tab === 'list' ? 'custTabList' : 'custTabDebts');
+  var panel = document.getElementById(tab === 'list' ? 'custTabList' : 'custTabDebts');
   if (panel) panel.classList.add('active');
   if (tab === 'debts') renderDebts();
   if (tab === 'list')  renderCustomerList();
 }
 
-
 /* ================================================
-   DAILY CLOSE — الإقفال اليومي
+   DAILY CLOSE
 ================================================ */
 function showDailyClose() {
-  const today = new Date();
-  const todaySales = filterSalesByPeriod('daily');
-  let revenue = 0, cost = 0, cashSales = 0, debtSales = 0;
-  todaySales.forEach(s => {
-    s.items.forEach(i => { revenue += i.price * i.qty; cost += (i.cost||0) * i.qty; });
+  var today = new Date();
+  var todaySales = filterSalesByPeriod('daily');
+  var revenue = 0, cost = 0, cashSales = 0, debtSales = 0;
+  todaySales.forEach(function(s) {
+    s.items.forEach(function(i){ revenue += i.price*i.qty; cost += (i.cost||0)*i.qty; });
     if (s.type === 'دين') debtSales += s.total;
     else cashSales += s.paid || s.total;
   });
-  const profit = revenue - cost;
-  const totalDebt = Object.values(
-    (DB.debts||[]).reduce((acc,d)=>{ acc[d.customer]=(acc[d.customer]||0)+(d.remaining||0); return acc; },{})
-  ).reduce((s,v)=>s+v,0);
+  var profit = revenue - cost;
+  var byC = (DB.debts||[]).reduce(function(acc,d){ acc[d.customer]=(acc[d.customer]||0)+(d.remaining||0); return acc; },{});
+  var totalDebt = Object.values(byC).reduce(function(s,v){ return s+v; }, 0);
 
-  let overlay = document.getElementById('dailyCloseOverlay');
+  var overlay = document.getElementById('dailyCloseOverlay');
   if (!overlay) {
     overlay = document.createElement('div');
     overlay.id = 'dailyCloseOverlay';
@@ -2440,107 +2473,83 @@ function showDailyClose() {
     document.body.appendChild(overlay);
   }
 
-  overlay.innerHTML = `
-    <div style="background:var(--surface);border-radius:20px;padding:24px;max-width:440px;width:94%;
-                max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
-      <div style="text-align:center;margin-bottom:18px">
-        <div style="font-size:24px">★</div>
-        <div style="font-size:18px;font-weight:900;color:var(--primary)">تقرير إقفال اليوم</div>
-        <div style="font-size:13px;color:var(--text3);margin-top:4px">${formatDate(today.toISOString())}</div>
-      </div>
-
-      <!-- بطاقات الأرقام -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-        <div class="dc-card green">
-          <div class="dc-label">🛒 عمليات البيع</div>
-          <div class="dc-val">${todaySales.length}</div>
-        </div>
-        <div class="dc-card blue">
-          <div class="dc-label">💰 المداخيل</div>
-          <div class="dc-val">${formatPrice(revenue)}</div>
-        </div>
-        <div class="dc-card orange">
-          <div class="dc-label">💵 النقد المحصّل</div>
-          <div class="dc-val">${formatPrice(cashSales)}</div>
-        </div>
-        <div class="dc-card purple">
-          <div class="dc-label">📈 صافي الربح</div>
-          <div class="dc-val">${formatPrice(profit)}</div>
-        </div>
-        <div class="dc-card red">
-          <div class="dc-label">📋 مبيعات بالدين</div>
-          <div class="dc-val">${formatPrice(debtSales)}</div>
-        </div>
-        <div class="dc-card indigo">
-          <div class="dc-label">⚠️ إجمالي الديون</div>
-          <div class="dc-val">${formatPrice(totalDebt)}</div>
-        </div>
-      </div>
-
-      <!-- صافي الإيراد -->
-      <div style="background:linear-gradient(135deg,var(--primary),var(--accent));border-radius:12px;
-                  padding:14px;text-align:center;margin-bottom:16px;color:white">
-        <div style="font-size:13px;opacity:0.9">صافي الإيراد اليومي</div>
-        <div style="font-size:22px;font-weight:900">${formatPrice(profit)}</div>
-      </div>
-
-      <!-- أزرار -->
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button onclick="printDailyClose()" style="flex:1;padding:12px;background:linear-gradient(135deg,#6366f1,#a855f7);
-          color:white;border-radius:10px;font-weight:800;font-size:14px;border:none;cursor:pointer;min-width:100px">
-          🖨️ طباعة
-        </button>
-        <button onclick="document.getElementById('dailyCloseOverlay').style.display='none'"
-          style="flex:1;padding:12px;background:var(--bg2);color:var(--text);border-radius:10px;
-          font-weight:800;font-size:14px;border:none;cursor:pointer;min-width:100px">
-          ✖ إغلاق
-        </button>
-      </div>
-    </div>`;
+  overlay.innerHTML = [
+    '<div style="background:var(--surface);border-radius:20px;padding:24px;max-width:440px;width:94%;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.3)">',
+      '<div style="text-align:center;margin-bottom:18px">',
+        '<div style="font-size:24px">&#9733;</div>',
+        '<div style="font-size:18px;font-weight:900;color:var(--primary)">تقرير إقفال اليوم</div>',
+        '<div style="font-size:13px;color:var(--text3);margin-top:4px">' + formatDate(today.toISOString()) + '</div>',
+      '</div>',
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">',
+        '<div class="dc-card green"><div class="dc-label">🛒 عمليات البيع</div><div class="dc-val">' + todaySales.length + '</div></div>',
+        '<div class="dc-card blue"><div class="dc-label">💰 المداخيل</div><div class="dc-val">' + formatPrice(revenue) + '</div></div>',
+        '<div class="dc-card orange"><div class="dc-label">💵 النقد المحصّل</div><div class="dc-val">' + formatPrice(cashSales) + '</div></div>',
+        '<div class="dc-card purple"><div class="dc-label">📈 صافي الربح</div><div class="dc-val">' + formatPrice(profit) + '</div></div>',
+        '<div class="dc-card red"><div class="dc-label">📋 مبيعات بالدين</div><div class="dc-val">' + formatPrice(debtSales) + '</div></div>',
+        '<div class="dc-card indigo"><div class="dc-label">⚠️ إجمالي الديون</div><div class="dc-val">' + formatPrice(totalDebt) + '</div></div>',
+      '</div>',
+      '<div style="background:linear-gradient(135deg,#f59e0b,#d97706);border-radius:12px;padding:14px;text-align:center;margin-bottom:16px;color:white">',
+        '<div style="font-size:13px;opacity:0.9">صافي الإيراد اليومي</div>',
+        '<div style="font-size:22px;font-weight:900">' + formatPrice(profit) + '</div>',
+      '</div>',
+      '<div style="display:flex;gap:8px">',
+        '<button onclick="printDailyClose()" style="flex:1;padding:12px;background:linear-gradient(135deg,#6366f1,#a855f7);color:white;border-radius:10px;font-weight:800;font-size:14px;border:none;cursor:pointer">🖨️ طباعة</button>',
+        '<button id="dcCloseBtn" style="flex:1;padding:12px;background:var(--bg2);color:var(--text);border-radius:10px;font-weight:800;font-size:14px;border:none;cursor:pointer">✖ إغلاق</button>',
+      '</div>',
+    '</div>'
+  ].join('');
 
   overlay.style.display = 'flex';
-  overlay.onclick = (e) => { if(e.target===overlay) overlay.style.display='none'; };
+  var closeBtn = document.getElementById('dcCloseBtn');
+  if (closeBtn) closeBtn.onclick = function(){ overlay.style.display='none'; };
+  overlay.onclick = function(e){ if(e.target===overlay) overlay.style.display='none'; };
 }
 
 function printDailyClose() {
-  const today = new Date();
-  const todaySales = filterSalesByPeriod('daily');
-  let revenue = 0, cost = 0, cashSales = 0, debtSales = 0;
-  todaySales.forEach(s => {
-    s.items.forEach(i => { revenue += i.price * i.qty; cost += (i.cost||0) * i.qty; });
+  var today = new Date();
+  var todaySales = filterSalesByPeriod('daily');
+  var revenue = 0, cost = 0, cashSales = 0, debtSales = 0;
+  todaySales.forEach(function(s) {
+    s.items.forEach(function(i){ revenue += i.price*i.qty; cost += (i.cost||0)*i.qty; });
     if (s.type === 'دين') debtSales += s.total;
     else cashSales += s.paid || s.total;
   });
-  const s = DB.settings;
-  const pw = window.open('','_blank','width=400,height=500');
-  pw.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
-  <title>إقفال ${formatDate(today.toISOString())}</title>
-  <style>
-    @page { size:80mm auto; margin:0; }
-    body { font-family:Arial,sans-serif; margin:0; padding:8px; direction:rtl; font-size:11pt; color:#000; width:72mm; }
-    .title { text-align:center; font-size:14pt; font-weight:900; margin-bottom:2mm; }
-    .sub   { text-align:center; font-size:9pt; color:#333; margin-bottom:3mm; }
-    .divider { border-top:0.4mm dashed #000; margin:2mm 0; }
-    .row   { display:flex; justify-content:space-between; margin:2mm 0; font-size:10pt; font-weight:700; }
-    .total { display:flex; justify-content:space-between; font-size:13pt; font-weight:900; margin:3mm 0; }
-    .footer { text-align:center; font-size:9pt; margin-top:4mm; }
-  </style></head><body>
-  <div class="title">${s.name||'POS DZ'}</div>
-  <div class="sub">تقرير إقفال اليوم — ${formatDate(today.toISOString())}</div>
-  <div class="divider"></div>
-  <div class="row"><span>عمليات البيع:</span><span>${todaySales.length}</span></div>
-  <div class="row"><span>المداخيل:</span><span>${formatPrice(revenue)}</span></div>
-  <div class="row"><span>النقد المحصّل:</span><span>${formatPrice(cashSales)}</span></div>
-  <div class="row"><span>مبيعات بالدين:</span><span>${formatPrice(debtSales)}</span></div>
-  <div class="row"><span>تكلفة الشراء:</span><span>${formatPrice(cost)}</span></div>
-  <div class="divider"></div>
-  <div class="total"><span>صافي الربح:</span><span>${formatPrice(revenue-cost)}</span></div>
-  <div class="divider"></div>
-  <div class="footer">POS DZ — ${s.name||''}</div>
-  <script>window.onload=function(){setTimeout(function(){window.print();window.addEventListener('afterprint',function(){window.close();});},200);};<\/script>
-  </body></html>`);
-  pw.document.close();
+  var st = DB.settings;
+  var css = [
+    '@page{size:80mm auto;margin:0mm}',
+    '*{box-sizing:border-box}',
+    'html,body{margin:0!important;padding:0!important;width:72mm;font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:#000;direction:rtl}',
+    '.w{width:72mm;padding:3mm 3mm 8mm}',
+    '.ti{text-align:center;font-size:14pt;font-weight:900;margin-bottom:1mm}',
+    '.su{text-align:center;font-size:9pt;color:#333;margin-bottom:3mm}',
+    'hr{border:none;border-top:0.4mm dashed #000;margin:2mm 0;width:100%}',
+    '.ro{display:flex;justify-content:space-between;margin:1.5mm 0;font-size:9.5pt;font-weight:700}',
+    '.to{display:flex;justify-content:space-between;font-size:13pt;font-weight:900;margin:3mm 0}',
+    '.fo{text-align:center;font-size:9pt;margin-top:4mm;padding-top:2mm;border-top:0.4mm dashed #000}',
+    '@media print{html,body{height:auto!important}}'
+  ].join('');
+
+  var body = [
+    '<div class="w">',
+    '<div class="ti">' + (st.name||'POS DZ') + '</div>',
+    '<div class="su">تقرير إقفال اليوم &#8212; ' + formatDate(today.toISOString()) + '</div>',
+    '<hr>',
+    '<div class="ro"><span>عمليات البيع:</span><span>' + todaySales.length + '</span></div>',
+    '<div class="ro"><span>المداخيل:</span><span>' + formatPrice(revenue) + '</span></div>',
+    '<div class="ro"><span>النقد المحصّل:</span><span>' + formatPrice(cashSales) + '</span></div>',
+    '<div class="ro"><span>مبيعات بالدين:</span><span>' + formatPrice(debtSales) + '</span></div>',
+    '<div class="ro"><span>تكلفة الشراء:</span><span>' + formatPrice(cost) + '</span></div>',
+    '<hr>',
+    '<div class="to"><span>صافي الربح:</span><span>' + formatPrice(revenue-cost) + '</span></div>',
+    '<hr>',
+    '<div class="fo">' + (st.name||'POS DZ') + '</div>',
+    '</div>'
+  ].join('');
+
+  var html = '<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><style>' + css + '</style></head><body>' + body + '</body></html>';
+  _printHtml(html);
 }
+
 
 /* ================================================
    INIT — التهيئة الآمنة الشاملة

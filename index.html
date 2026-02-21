@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -62,7 +63,7 @@
       </div>
     </div>
     <div class="header-left">
-      <div class="header-brand-fixed">POS<span>DZ</span></div>
+      <div class="header-posdz-logo">POS <span>DZ</span></div>
       <button id="menuBtn" class="menu-trigger">
         <span></span><span></span><span></span>
       </button>
@@ -223,17 +224,51 @@
       <button class="backBtn" onclick="goBack()">⬅ <span data-i18n="back">الرجوع</span></button>
       <h3 data-i18n="menu_customers">👥 الزبائن</h3>
     </div>
-    <div class="input-row flex-wrap">
-      <input id="cname" placeholder="اسم الزبون" data-i18n-placeholder="customer_ph" style="flex:2;min-width:140px">
-      <input id="cphone" placeholder="📱 رقم الهاتف (اختياري)" type="tel" style="flex:2;min-width:140px">
-      <button onclick="addCustomer()" data-i18n="add_btn" style="flex:0 0 auto">➕ إضافة</button>
+
+    <!-- تبويبات قسم الزبائن -->
+    <div class="cust-tabs">
+      <button class="ctab active" onclick="switchCustTab('list',this)">👥 قائمة الزبائن</button>
+      <button class="ctab"        onclick="switchCustTab('debts',this)">📋 تتبع الديون</button>
     </div>
-    <!-- بحث الزبائن -->
-    <div class="search-box small" style="margin-bottom:12px">
-      <span class="search-icon">🔍</span>
-      <input id="customerSearch" placeholder="🔍 بحث في الزبائن..." oninput="renderCustomerList()" autocomplete="off">
+
+    <!-- تبويب 1: قائمة الزبائن -->
+    <div id="custTabList" class="cust-panel active">
+      <div class="card-panel" style="margin-bottom:14px">
+        <h4 style="margin:0 0 12px">➕ إضافة زبون جديد</h4>
+        <div class="input-row">
+          <input id="cname" placeholder="اسم الزبون" data-i18n-placeholder="customer_ph">
+          <input id="cphone" placeholder="رقم الهاتف (اختياري)" type="tel" style="max-width:180px">
+          <button onclick="addCustomer()">➕ إضافة</button>
+        </div>
+      </div>
+      <div class="search-box small" style="margin-bottom:12px">
+        <span class="search-icon">🔍</span>
+        <input id="customerSearch" placeholder="🔍 بحث في الزبائن..." oninput="renderCustomerList()" autocomplete="off">
+      </div>
+      <ul id="clist" style="margin-top:4px"></ul>
     </div>
-    <ul id="clist" style="margin-top:4px"></ul>
+
+    <!-- تبويب 2: تتبع الديون -->
+    <div id="custTabDebts" class="cust-panel">
+      <!-- بطاقات إجمالية -->
+      <div class="cust-debt-summary">
+        <div class="cds-card red">
+          <span class="cds-icon">⚠️</span>
+          <span class="cds-label">إجمالي الديون</span>
+          <span class="cds-val" id="cTotalDebt">0</span>
+        </div>
+        <div class="cds-card indigo">
+          <span class="cds-icon">👥</span>
+          <span class="cds-label">عدد المدينين</span>
+          <span class="cds-val" id="cDebtCount">0</span>
+        </div>
+      </div>
+      <div class="search-box small" style="margin:12px 0">
+        <span class="search-icon">🔍</span>
+        <input id="debtSearch" placeholder="بحث في الزبائن المدينين..." oninput="renderDebts()" autocomplete="off">
+      </div>
+      <ul id="debtList"></ul>
+    </div>
   </section>
 
   <!-- إدارة المستخدمين -->
@@ -309,6 +344,9 @@
         <div class="rcard purple"><span class="rcard-icon">📈</span><span class="rcard-label" data-i18n="r_profit">صافي الربح</span><span class="rcard-val" id="rProfit">0</span></div>
         <div class="rcard red"><span class="rcard-icon">⚠️</span><span class="rcard-label" data-i18n="total_debts">إجمالي الديون</span><span class="rcard-val" id="rTotalDebt">0</span></div>
         <div class="rcard indigo"><span class="rcard-icon">👥</span><span class="rcard-label" data-i18n="debtors_count">عدد المدينين</span><span class="rcard-val" id="rDebtCount">0</span></div>
+        <!-- rTotalDebt2 و rDebtCount2 مخفية لكن ضرورية للتحديث -->
+        <span id="rTotalDebt2" style="display:none">0</span>
+        <span id="rDebtCount2" style="display:none">0</span>
       </div>
 
       <!-- مداخيل حسب المستخدم -->
@@ -318,18 +356,22 @@
       </div>
     </div>
 
-    <!-- قسم الديون -->
-    <div class="debt-section">
-      <div class="debt-section-header">
-        <h4 data-i18n="debts_title">📋 تتبع الديون</h4>
-        <!-- بحث في الديون -->
-        <div class="search-box small debt-search">
-          <span class="search-icon">🔍</span>
-          <input id="debtSearch" placeholder="بحث في الزبائن المدينين..." oninput="renderDebts()" autocomplete="off">
-        </div>
+    <!-- بطاقات الديون الثابتة دائماً في إدارة الأعمال -->
+    <div class="report-debt-summary">
+      <div class="rds-card">
+        <span>⚠️ إجمالي الديون</span>
+        <strong id="rTotalDebt2">0</strong>
       </div>
-      <ul id="debtList"></ul>
+      <div class="rds-card indigo">
+        <span>👥 عدد المدينين</span>
+        <strong id="rDebtCount2">0</strong>
+      </div>
     </div>
+
+    <!-- زر الإقفال اليومي -->
+    <button class="btn-daily-close" onclick="showDailyClose()">
+      ★ إقفال اليوم
+    </button>
 
     <!-- سجل العمليات + مسح البيانات -->
     <div style="margin-top:16px">
@@ -436,6 +478,62 @@
         <button class="fsz-btn" onclick="setFontSize(19)" data-size="19">كبير جداً</button>
       </div>
 
+      <!-- إعدادات الصوت -->
+      <div class="settings-section-divider">🔊 إعدادات الصوت والرنين</div>
+      <div class="sound-settings-card">
+        <div class="sound-option">
+          <div class="sound-option-info">
+            <span class="sound-icon">🛒</span>
+            <div>
+              <div class="sound-option-title">صوت إضافة المنتج</div>
+              <div class="sound-option-desc">رنين عند إضافة منتج للعربة</div>
+            </div>
+          </div>
+          <label class="toggle-label">
+            <input type="checkbox" id="sSoundAdd" class="toggle-input" onchange="saveSoundSettings()">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="sound-option">
+          <div class="sound-option-info">
+            <span class="sound-icon">✅</span>
+            <div>
+              <div class="sound-option-title">صوت إتمام البيع</div>
+              <div class="sound-option-desc">رنين عند إتمام عملية البيع بنجاح</div>
+            </div>
+          </div>
+          <label class="toggle-label">
+            <input type="checkbox" id="sSoundPay" class="toggle-input" onchange="saveSoundSettings()">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="testSound('add')" style="background:#3b82f6;padding:7px 14px;font-size:13px">🔊 تجربة صوت الإضافة</button>
+          <button onclick="testSound('pay')" style="background:#10b981;padding:7px 14px;font-size:13px">🔊 تجربة صوت البيع</button>
+        </div>
+      </div>
+
+      <!-- إعدادات الباركود -->
+      <div class="settings-section-divider">📷 قارئ الباركود</div>
+      <div class="sound-settings-card">
+        <div class="sound-option">
+          <div class="sound-option-info">
+            <span class="sound-icon">📷</span>
+            <div>
+              <div class="sound-option-title">تفعيل قارئ الباركود</div>
+              <div class="sound-option-desc">حجز المنتجات تلقائياً بجهاز الباركود</div>
+            </div>
+          </div>
+          <label class="toggle-label">
+            <input type="checkbox" id="sBarcodeReader" class="toggle-input" onchange="saveSoundSettings()">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <p style="font-size:12px;color:var(--text3);margin:6px 0 0">
+          ℹ️ المنتجات التي تحمل باركوداً تُحجز تلقائياً — المنتجات بدون باركود تُحجز يدوياً.
+        </p>
+      </div>
+
       <!-- ألوان التطبيق -->
       <label class="set-label">لون واجهة التطبيق</label>
       <div class="theme-picker">
@@ -443,66 +541,6 @@
         <button class="theme-swatch" data-theme="ocean" onclick="setTheme('ocean')" style="background:linear-gradient(135deg,#0ea5e9,#06b6d4)" title="أزرق"></button>
         <button class="theme-swatch" data-theme="emerald" onclick="setTheme('emerald')" style="background:linear-gradient(135deg,#10b981,#059669)" title="أخضر"></button>
         <button class="theme-swatch" data-theme="sunset" onclick="setTheme('sunset')" style="background:linear-gradient(135deg,#f59e0b,#ef4444)" title="برتقالي-أحمر"></button>
-      </div>
-
-      <!-- الأصوات -->
-      <div class="settings-section-divider">🔊 إعدادات الأصوات</div>
-      <div class="sound-settings-grid">
-        <div class="sound-option-card">
-          <div class="sound-option-info">
-            <span class="sound-option-icon">🛒</span>
-            <div>
-              <div class="sound-option-title">صوت إضافة المنتج</div>
-              <div class="sound-option-desc">رنين عند إضافة سلعة للعربة أو قراءة باركود</div>
-            </div>
-          </div>
-          <label class="toggle-label">
-            <input type="checkbox" id="sSoundAdd" class="toggle-input" onchange="saveSoundSetting('add',this.checked)">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="sound-option-card">
-          <div class="sound-option-info">
-            <span class="sound-option-icon">✅</span>
-            <div>
-              <div class="sound-option-title">صوت إتمام البيع</div>
-              <div class="sound-option-desc">رنين عند تسجيل عملية بيع ناجحة</div>
-            </div>
-          </div>
-          <label class="toggle-label">
-            <input type="checkbox" id="sSoundSale" class="toggle-input" onchange="saveSoundSetting('sale',this.checked)">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="sound-option-card">
-          <div class="sound-option-info">
-            <span class="sound-option-icon">❌</span>
-            <div>
-              <div class="sound-option-title">صوت التنبيه / الخطأ</div>
-              <div class="sound-option-desc">نغمة تنبيه عند حدوث خطأ أو مخزون ناقص</div>
-            </div>
-          </div>
-          <label class="toggle-label">
-            <input type="checkbox" id="sSoundError" class="toggle-input" onchange="saveSoundSetting('error',this.checked)">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="sound-option-card">
-          <div class="sound-option-info">
-            <span class="sound-option-icon">🔘</span>
-            <div>
-              <div class="sound-option-title">صوت النقر على الأزرار</div>
-              <div class="sound-option-desc">نقرة خفيفة عند الضغط على الأيقونات والأزرار</div>
-            </div>
-          </div>
-          <label class="toggle-label">
-            <input type="checkbox" id="sSoundClick" class="toggle-input" onchange="saveSoundSetting('click',this.checked)">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-      </div>
-      <div style="margin:10px 0 4px">
-        <button onclick="testAllSounds()" style="background:linear-gradient(135deg,#6366f1,#a855f7);font-size:13px;padding:8px 18px">🎵 اختبار الأصوات</button>
       </div>
 
       <button onclick="saveSettingsApp()" style="margin-top:16px" data-i18n="save_app">💾 حفظ إعدادات البرنامج</button>
@@ -539,40 +577,15 @@
           <label class="set-label" data-i18n="invoice_num">رقم الفاتورة الحالي</label>
           <input id="sInvoiceNum" type="number" placeholder="1" min="1">
           <label class="set-label" data-i18n="printer_label">اختيار الطابعة</label>
-          <div class="printer-search-wrap">
-            <div class="printer-detected-list" id="printerDetectedList">
-              <div class="printer-item active" data-value="default" onclick="selectPrinter(this,'default')">
-                <span class="printer-icon">🖨️</span>
-                <div>
-                  <div class="printer-name">الطابعة الافتراضية للنظام</div>
-                  <div class="printer-type">System Default Printer</div>
-                </div>
-                <span class="printer-check" id="printerCheck_default">✔</span>
-              </div>
-              <div class="printer-item" data-value="thermal" onclick="selectPrinter(this,'thermal')">
-                <span class="printer-icon">🧾</span>
-                <div>
-                  <div class="printer-name">طابعة حرارية (Thermal)</div>
-                  <div class="printer-type">Thermal Receipt Printer — 58/80mm</div>
-                </div>
-                <span class="printer-check" id="printerCheck_thermal"></span>
-              </div>
-              <div class="printer-item" data-value="inkjet" onclick="selectPrinter(this,'inkjet')">
-                <span class="printer-icon">🖨️</span>
-                <div>
-                  <div class="printer-name">طابعة عادية (Inkjet / Laser)</div>
-                  <div class="printer-type">Standard Office Printer — A4/A5</div>
-                </div>
-                <span class="printer-check" id="printerCheck_inkjet"></span>
-              </div>
-              <div id="extraPrintersList"></div>
-            </div>
-            <button onclick="scanForPrinters()" class="btn-scan-printers" id="btnScanPrinters">
-              🔍 بحث عن طابعات جديدة
-            </button>
-            <div id="printerScanStatus" class="printer-scan-status"></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">
+            <select id="sPrinter" style="flex:1;margin:0">
+              <option value="default">الطابعة الافتراضية</option>
+              <option value="thermal">طابعة حرارية (Thermal)</option>
+              <option value="inkjet">طابعة عادية (Inkjet/Laser)</option>
+            </select>
+            <button onclick="searchForPrinters()" style="background:#6366f1;padding:9px 14px;font-size:13px;white-space:nowrap">🔍 بحث عن طابعة</button>
           </div>
-          <input type="hidden" id="sPrinter" value="default">
+          <div id="printerSearchStatus" style="font-size:12px;color:var(--text3);margin-bottom:8px"></div>
           <label class="set-label" data-i18n="paper_size">مقاس الورق</label>
           <select id="sPaperSize">
             <option value="58mm">58 مم</option>
@@ -615,33 +628,22 @@
         <button onclick="manualBackup()" style="margin-top:12px;background:#6366f1" data-i18n="manual_backup">📥 نسخ احتياطي الآن</button>
         <div id="msgBackup" class="toast-msg"></div>
       </div>
-
-      <!-- مسح جزئي -->
-      <hr style="margin:20px 0;border:none;border-top:2px solid #fef3c7">
-      <div class="system-card" style="border:2px solid #fde68a;background:#fffbeb">
-        <h5 style="color:#92400e">🗂️ مسح جزئي للبيانات</h5>
-        <p style="font-size:13px;color:#78350f;margin:0 0 14px">يمسح: بيانات المبيعات، الفواتير، الديون، والزبائن.<br><strong>لا يمس:</strong> أسماء المنتجات، العائلات، الماركات، والمستخدمين.</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
-          <button onclick="confirmPartialReset('sales')" class="partial-reset-btn" style="background:linear-gradient(135deg,#f59e0b,#d97706)">
-            🗑️ مسح المبيعات والفواتير
-          </button>
-          <button onclick="confirmPartialReset('customers')" class="partial-reset-btn" style="background:linear-gradient(135deg,#f59e0b,#d97706)">
-            👥 مسح بيانات الزبائن والديون
-          </button>
+      <hr style="margin:28px 0 20px;border:none;border-top:2px solid #fee2e2">
+      <div class="system-card">
+        <h5>🗑️ إدارة البيانات</h5>
+        <p style="font-size:13px;color:#6b7280;margin:0 0 16px">خيارات مسح البيانات بشكل انتقائي أو كلي.</p>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--radius-sm);padding:14px">
+            <div style="font-weight:800;font-size:14px;color:#d97706;margin-bottom:6px">🧹 المسح الجزئي</div>
+            <div style="font-size:13px;color:#6b7280;margin-bottom:10px">يمسح: المبيعات، الديون، سجل العمليات. <strong>لا يمسح:</strong> أسماء المنتجات والماركات والعائلات.</div>
+            <button onclick="confirmPartialReset()" style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:10px 20px;font-size:13px;width:100%">🧹 مسح جزئي للبيانات</button>
+          </div>
+          <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.25);border-radius:var(--radius-sm);padding:14px">
+            <div style="font-weight:800;font-size:14px;color:#dc2626;margin-bottom:6px">🔴 المسح الكلي</div>
+            <div style="font-size:13px;color:#6b7280;margin-bottom:10px">يمسح كل شيء: المصاريف، المنتجات، الزبائن، الديون، وكل البيانات.</div>
+            <button onclick="confirmReset()" class="reset-btn" style="margin:0" data-i18n="reset_btn">🔴 إعادة ضبط النظام الكلي</button>
+          </div>
         </div>
-        <button onclick="confirmPartialReset('all_except_stock')" class="partial-reset-btn" style="background:linear-gradient(135deg,#ef4444,#dc2626);width:100%">
-          🗑️ مسح جزئي شامل (المبيعات + الزبائن + الديون)
-        </button>
-        <p class="danger-warning" style="margin-top:10px">⚠️ تبقى: المنتجات، العائلات، الماركات، والمستخدمين.</p>
-      </div>
-
-      <!-- مسح كلي -->
-      <hr style="margin:20px 0;border:none;border-top:2px solid #fee2e2">
-      <div class="system-card danger-card">
-        <h5 style="color:#b91c1c">💥 إعادة الضبط الكاملة</h5>
-        <p style="font-size:13px;color:#b91c1c;margin:0 0 14px">يمسح <strong>كل شيء</strong> دون استثناء: المنتجات، الماركات، العائلات، المبيعات، الزبائن، الديون، والإعدادات.</p>
-        <button onclick="confirmReset()" class="reset-btn" data-i18n="reset_btn">🔴 إعادة ضبط النظام الكاملة</button>
-        <p class="danger-warning" data-i18n="reset_warning">⚠️ تحذير: هذا الجزء سيقوم بحذف جميع البيانات وإعادة البرنامج لحالته الأصلية.</p>
       </div>
     </div>
 
@@ -662,7 +664,7 @@
         <div class="about-sub">نظام نقاط البيع الذكي</div>
         <div class="about-version-row">
           <span class="about-badge">الإصدار: 1.0.2</span>
-          <span class="about-badge">تاريخ: 2026</span>
+          <span class="about-badge">تاريخ: 2026/02/20</span>
         </div>
 
         <div class="about-license">
@@ -678,7 +680,7 @@
           <div class="about-dev-info">
             <div>🏢 <strong>شركة:</strong> بوس ديزاد | ب.حمزة</div>
             <div>📱 <strong>واتساب:</strong>
-              <a href="https://wa.me/213770044850" target="_blank" class="about-wa-link">0770044850 🇩🇿</a>
+              <a href="https://wa.me/213770044850" target="_blank" class="about-wa-link">🇩🇿 0770044850</a>
             </div>
           </div>
         </div>
